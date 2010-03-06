@@ -70,6 +70,12 @@ vector<double> normalize_dist(vector<double> dist, double sum) {
     return dist;
 }
 
+vector<double> normalize_dist(vector<int> dist, int sum) {
+    vector<double> double_dist(dist.size(),0);
+    for ( int i = 1; i < dist.size(); i++) double_dist[i] = double(dist[i]) / sum;
+    return double_dist;
+}
+
 int rand_nonuniform_int(vector<double> dist, MTRand* mtrand) {
     //assert(sum(dist) == 1);  // why doesn't this work?
     double last = 0;
