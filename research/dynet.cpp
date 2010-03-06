@@ -6,7 +6,7 @@ int main() {
 
     // Create and populate a network
     Network net("name", false);
-    int N = 100000; // network size
+    int N = 10000; // network size
     net.populate(N); 
     
     // Parameterize degree distribution, a truncated Poisson(5)
@@ -15,12 +15,15 @@ int main() {
     int max = N; // max degree
     // generate the normalize vector of probabilities
     vector<double> dist;
-    double deg_array[] = {0, 1, 1, 1};
-    dist.assign(deg_array,deg_array+4);
+    double deg_array[] = {0, 1, 1, 1, 1};
+    dist.assign(deg_array,deg_array+5);
     dist = normalize_dist(dist, sum(dist));
 
     // use configuration model to connect up the network
     net.rand_connect_user(dist);
+
+    // add unconnected nodes
+    net.populate(N/4);
 
     vector<int> tmp_dist = net.get_deg_dist();
     vector<double> actual_deg_dist = normalize_dist(tmp_dist, sum(tmp_dist));

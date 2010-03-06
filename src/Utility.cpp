@@ -72,7 +72,7 @@ vector<double> normalize_dist(vector<double> dist, double sum) {
 
 vector<double> normalize_dist(vector<int> dist, int sum) {
     vector<double> double_dist(dist.size(),0);
-    for ( int i = 1; i < dist.size(); i++) double_dist[i] = double(dist[i]) / sum;
+    for ( int i = 0; i < dist.size(); i++) double_dist[i] = double(dist[i]) / sum;
     return double_dist;
 }
 
