@@ -244,6 +244,7 @@ void Network::rand_connect_stubs(vector<Edge*> stubs) {
         m->define_end(n->start);
         n->define_end(m->start);
     }
+    
     lose_loops();
 }
 

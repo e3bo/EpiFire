@@ -18,7 +18,7 @@ int main() {
 
     // Create and populate a network
     Network net("name", false);
-    net.populate(120); // very small, but this way we can visualize it
+    net.populate(100); // very small, but this way we can visualize it
     
     // Parameterize degree distribution, a truncated Poisson(5)
     double lambda = 5;
@@ -33,7 +33,7 @@ int main() {
         // Choose and run simulation
         SEIR_Percolation_Sim sim(&net);
         // set probability of transmission between neighbors
-        sim.set_transmissibility(0.5);
+        sim.set_transmissibility(0.2);
         // randomly set some people to the 'exposed' state
         sim.rand_expose(10);
         
