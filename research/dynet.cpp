@@ -2,7 +2,10 @@
 // from the Percolation_Sim base class
 #include "SEIR_Percolation_Sim.h"
 
-int get_next_edge_event (double *p, double *pf, double *e, double *rate, int* i_deg, int* j_deg, int* is_add, int max_deg, double v);
+int get_next_edge_event (double *p, double *pf, double *e, 
+                         double *rate, int* i_deg, int* j_deg,
+                         int* is_add, int max_deg, 
+                         double mean_deg, double v);
 
 int main() {
 
@@ -100,10 +103,12 @@ int main() {
 
    /* rate of all edge addition and deletion events */
    double *rate;
+   double mean_deg = net.mean_deg();
    int *i_deg;
    int *j_deg;
    int *is_add;
-   get_next_edge_event (p, pf, e, rate, i_deg, j_deg, is_add, max_deg, v);
+   get_next_edge_event (p, pf, e, rate, i_deg, j_deg, is_add, 
+                        max_deg, mean_deg, v);
    free (p);
    free (pf);
 //    vector<double> p = normalize_dist(tmp_dist, sum(tmp_dist));
@@ -136,7 +141,7 @@ int main() {
 
 int 
 get_next_edge_event (double *p, double *pf, double *e, double *rate, int *i_deg, 
-                     int *j_deg, int *is_add, int max_deg, double v)
+                     int *j_deg, int *is_add, int max_deg, double mean_deg, double v)
 {
   /* This function calculates the relative rates of all types of edge
    * additions and deletions, then selects one event proportional to 
@@ -157,9 +162,79 @@ get_next_edge_event (double *p, double *pf, double *e, double *rate, int *i_deg,
      {
       dot_p[i] = v * (pf[i] - p[i]); 
      }
-   for (size_t i = 0; i <= max_deg; i++)
+
+   /* vectors holding the degree of first member and
+    * second members of edge all types of edges */
+   int * c_2_row_ind_seq;
+   int * c_2_col_ind_seq;
+
+
+   int num_edge_types = max_deg * (max_deg + 1) / 2;
+
+   c_2_row_ind_seq = (int *) malloc ((num_edge_types) * sizeof (int));
+  if (!c_2_row_ind_seq)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+  c_2_col_ind_seq = (int *) malloc ((num_edge_types) * sizeof (int));
+  if (!c_2_col_ind_seq)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+   
+  /* vector holding rate of change for all edge types */
+  double * dot_c;
+  dot_c = (double *) malloc ((num_edge_types) * sizeof (double));
+  if (!dot_c)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+
+
+  double dot_mean_deg = 0;
+  for (size_t i = 1; i <= max_deg; i++)
+    {
+      dot_mean_deg += i * dot_p[i];
+    }
+  
+  /* first constant used in calculating dot_c values */
+  double t1 = 1/ pow(mean_deg,2);
+  
+  /* second contant used in calculating dot_c values */
+  double t2 = 2 * dot_mean_deg / pow(mean_deg,3);
+
+  int q = 0;
+  for (size_t j = 1; j <= max_deg; j++)
+    {
+      for (size_t i = 1; i <= j; i++)
+        {
+          dot_c[q] = t1 * i * j * (dot_p[i] * p[j] 
+                                   + p[i] * dot_p[j]) 
+            + t2 * i * j * p[i] * p[j];
+          c_2_row_ind_seq[q] = i;
+          c_2_col_ind_seq[q] = j;
+          q++;
+        }
+    }
+
+
+
+
+
+   for (size_t i = 0; i < num_edge_types; i++)
      {
-      fprintf (stdout, "%g\n", dot_p[i]); 
+      fprintf (stdout, "%g\n", dot_c[i]); 
      }
+
+   free (dot_p);
+   free (c_2_row_ind_seq);
+   free (c_2_col_ind_seq);
+   free (dot_c);
  return 0; 
 }
