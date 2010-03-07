@@ -2,6 +2,8 @@
 // from the Percolation_Sim base class
 #include "SEIR_Percolation_Sim.h"
 
+int get_next_edge_event (double *p, double *pf, double *e, double *rate, int* i_deg, int* j_deg, int* is_add, int max_deg, double v);
+
 int main() {
 
     // Create and populate a network
@@ -54,6 +56,58 @@ int main() {
         }
         cout << endl;
     }
+    
+   // prototype function to calculate relative rates
+
+    /* degree distribution */
+  double *p;
+  p = (double *) malloc ((max_deg + 1) * sizeof (double));
+  if (!p)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+   for (size_t i = 0; i <= max_deg; i++)
+     {
+      p[i] = actual_deg_dist[i]; 
+     }
+   double *e;
+
+   /* final degree distribution */
+   double *pf;
+  pf = (double *) calloc ((max_deg + 1), sizeof (double));
+  if (!pf)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+   if (max_deg + 1 == 5)
+     {
+       pf[2] = 1;
+     }
+   else
+     {
+       fprintf (stderr, 
+                "Error: %s: %d: Final degree distribution wrong\n",
+                __FILE__, __LINE__);
+       return (1);
+     }
+
+   /* rate of approach of degree dist to pf*/
+   double v = 0.2;
+
+   /* rate of all edge addition and deletion events */
+   double *rate;
+   int *i_deg;
+   int *j_deg;
+   int *is_add;
+   get_next_edge_event (p, pf, e, rate, i_deg, j_deg, is_add, max_deg, v);
+   free (p);
+   free (pf);
+//    vector<double> p = normalize_dist(tmp_dist, sum(tmp_dist));
+//    vector<double> actual_deg_dist = normalize_dist(tmp_dist, sum(tmp_dist));
 /*
     for (int i = 0; i < 10; i++){
         // Choose and run simulation
@@ -78,4 +132,34 @@ int main() {
     }
     */
     return 0;
+}
+
+int 
+get_next_edge_event (double *p, double *pf, double *e, double *rate, int *i_deg, 
+                     int *j_deg, int *is_add, int max_deg, double v)
+{
+  /* This function calculates the relative rates of all types of edge
+   * additions and deletions, then selects one event proportional to 
+   * it's rate
+   */
+
+  /* rate of change of degree dist */
+   double * dot_p;
+
+  dot_p = (double *) malloc ((max_deg + 1) * sizeof (double));
+  if (!p)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+   for (size_t i = 0; i <= max_deg; i++)
+     {
+      dot_p[i] = v * (pf[i] - p[i]); 
+     }
+   for (size_t i = 0; i <= max_deg; i++)
+     {
+      fprintf (stdout, "%g\n", dot_p[i]); 
+     }
+ return 0; 
 }
