@@ -1,11 +1,13 @@
 // Here we will use a local SEIR simulation class that is derived
 // from the Percolation_Sim base class
 #include "SEIR_Percolation_Sim.h"
+#include <gsl/gsl_linalg.h>
 
 int get_next_edge_event (double *p, double *pf, double *e, 
                          double *rate, int* i_deg, int* j_deg,
                          int* is_add, int max_deg, 
-                         double mean_deg, double v);
+                         double mean_deg, int num_nodes, 
+                         double v);
 
 int main() {
 
@@ -107,8 +109,9 @@ int main() {
    int *i_deg;
    int *j_deg;
    int *is_add;
+   int num_nodes = net.size();
    get_next_edge_event (p, pf, e, rate, i_deg, j_deg, is_add, 
-                        max_deg, mean_deg, v);
+                        max_deg, mean_deg, num_nodes, v);
    free (p);
    free (pf);
 //    vector<double> p = normalize_dist(tmp_dist, sum(tmp_dist));
@@ -140,8 +143,10 @@ int main() {
 }
 
 int 
-get_next_edge_event (double *p, double *pf, double *e, double *rate, int *i_deg, 
-                     int *j_deg, int *is_add, int max_deg, double mean_deg, double v)
+get_next_edge_event (double *p, double *pf, double *e, 
+                     double *rate, int *i_deg, int *j_deg, 
+                     int *is_add, int max_deg, double mean_deg, 
+                     int num_nodes, double v)
 {
   /* This function calculates the relative rates of all types of edge
    * additions and deletions, then selects one event proportional to 
@@ -206,7 +211,7 @@ get_next_edge_event (double *p, double *pf, double *e, double *rate, int *i_deg,
   /* first constant used in calculating dot_c values */
   double t1 = 1/ pow(mean_deg,2);
   
-  /* second contant used in calculating dot_c values */
+  /* Second constant used in calculating dot_c values */
   double t2 = 2 * dot_mean_deg / pow(mean_deg,3);
 
   int q = 0;
@@ -223,8 +228,24 @@ get_next_edge_event (double *p, double *pf, double *e, double *rate, int *i_deg,
         }
     }
 
+  /* rate of change of number of each edge type */
+  gsl_vector_view b 
+    = gsl_vector_view_array (dot_c, num_edge_types);
 
+  gsl_vector_scale (&b.vector, num_nodes * mean_deg / 2); 
 
+  /* Matrix of change in number of edge types with respect
+   * to addition of an edge of a give type */
+  
+  double * a_data;
+
+  a_data = (double *) calloc (num_edge_types * num_edge_types, sizeof (double));
+  if (!a_data)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
 
 
    for (size_t i = 0; i < num_edge_types; i++)
