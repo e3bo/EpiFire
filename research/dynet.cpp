@@ -37,6 +37,8 @@ int main() {
     vector<int> tmp_dist = net.get_deg_dist();
     vector<double> actual_deg_dist = normalize_dist(tmp_dist, sum(tmp_dist));
 
+    
+
     for (int i = 0; i<actual_deg_dist.size(); i++) {
         cout << dist[i] << "\t" << actual_deg_dist[i] << endl;
     }
@@ -212,6 +214,15 @@ int main() {
     free (i_deg_less_one_nodes);
     free (j_deg_less_one_nodes);
      }
+
+    cout << "mean deg: " << net.mean_deg() << endl;
+
+   Edge*   edge = net.get_edge(1);
+   edge->disconnect_nodes();
+
+    cout << "mean deg: " << net.mean_deg() << endl;
+
+
    free (p);
    free (pf);
    gsl_rng_free (rng);
