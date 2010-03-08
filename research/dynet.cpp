@@ -247,7 +247,137 @@ get_next_edge_event (double *p, double *pf, double *e,
       return (1);
     }
 
+/* degree of node at one end of edge following the edge's 
+ * addition */
+   int new_edge_i, old_edge_i, new_edge_j, old_edge_j;
 
+       /* index of first element in focal column
+        * columns of a_data are expected changes in number of 
+        * all types of edges with index R when adding an edge of 
+        * type indexed by Q */
+
+   int first_el;
+
+       /* m is the degree of host at other end of edge */
+       int m;
+       
+       /* increment and decrement amounts, used for clarity */
+       double inc, dec;
+
+   for (int q = 0; q < num_edge_types; q++)
+     {
+       new_edge_i = c_2_row_ind_seq[q];
+       old_edge_i = new_edge_i - 1;
+
+       new_edge_j = c_2_col_ind_seq[q];
+       old_edge_j = new_edge_j - 1;
+
+       first_el = q * num_edge_types;
+       
+
+       for (int r =0; r < num_edge_types; r++)
+         {
+           /* losses of edges because they are turned into 
+            * other types of edges because of the degree change 
+            * of the node that gains an edge
+            */
+           if (c_2_row_ind_seq[r] == old_edge_i )
+             {
+               m = c_2_col_ind_seq[r];
+               dec = old_edge_i * m * p[m] / mean_deg;
+               a_data[first_el + r] -= dec;
+             }
+           else if (c_2_col_ind_seq[r] == old_edge_i )
+             {
+               m = c_2_row_ind_seq[r];
+               dec = old_edge_i * m * p[m] / mean_deg;
+               a_data[first_el + r] -= dec;
+             }
+
+           if (c_2_row_ind_seq[r] == old_edge_j )
+             {
+               m = c_2_col_ind_seq[r];
+               dec = old_edge_j * m * p[m] / mean_deg;
+               a_data[first_el + r] -= dec;
+             }
+           else if (c_2_col_ind_seq[r] == old_edge_j )
+             {
+               m = c_2_row_ind_seq[r];
+               dec = old_edge_j * m * p[m] / mean_deg;
+               a_data[first_el + r] -= dec;
+             }
+
+           /* Direct gains from edge addtion */
+
+           if (q == r)
+             {
+               a_data[first_el + r] +=1;
+             }
+
+           /* gains of edges because they are produced from 
+            * other types of edges because of the degree change 
+            * of the node that gains an edge
+            */
+           if (c_2_row_ind_seq[r] == new_edge_i )
+             {
+               m = c_2_col_ind_seq[r];
+               inc = old_edge_i * m * p[m] / mean_deg;
+               a_data[first_el + r] += inc;
+             }
+           else if (c_2_col_ind_seq[r] == new_edge_i )
+             {
+               m = c_2_row_ind_seq[r];
+               inc = old_edge_i * m * p[m] / mean_deg;
+               a_data[first_el + r] += inc;
+             }
+
+           if (c_2_row_ind_seq[r] == new_edge_j )
+             {
+               m = c_2_col_ind_seq[r];
+               inc = old_edge_j * m * p[m] / mean_deg;
+               a_data[first_el + r] += inc;
+             }
+           else if (c_2_col_ind_seq[r] == new_edge_j )
+             {
+               m = c_2_row_ind_seq[r];
+               inc = old_edge_j * m * p[m] / mean_deg;
+               a_data[first_el + r] += inc;
+             }
+         }
+     }
+
+   double  colsum;
+   for (int q = 0; q < num_edge_types; q++)
+     {
+       colsum = 0;
+       for (int r = 0; r < num_edge_types; r++)
+         {
+           colsum += a_data[ q * num_edge_types + r];
+
+         }
+       fprintf (stdout, "colum %d sum = %g\n", q+1, colsum);
+     }
+
+   gsl_matrix_view a
+     = gsl_matrix_view_array (a_data, num_edge_types, num_edge_types);
+
+   gsl_vector *x = gsl_vector_alloc (num_edge_types);
+
+   int s;
+   gsl_permutation * perm = gsl_permutation_alloc (num_edge_types);
+
+   gsl_linalg_LU_decomp (&a.matrix, perm, &s);
+   
+   gsl_linalg_LU_solve (&a.matrix, perm, &b.vector, x);
+   
+   printf ("eta = \n");
+   gsl_vector_fprintf (stdout, x, "%g");
+   printf ("\n");
+   
+   gsl_permutation_free (perm);
+   gsl_vector_free (x);
+                                                     
+   printf ("dot_c = \n");
    for (size_t i = 0; i < num_edge_types; i++)
      {
       fprintf (stdout, "%g\n", dot_c[i]); 
@@ -257,5 +387,6 @@ get_next_edge_event (double *p, double *pf, double *e,
    free (c_2_row_ind_seq);
    free (c_2_col_ind_seq);
    free (dot_c);
+   free (a_data);
  return 0; 
 }
