@@ -2,12 +2,13 @@
 // from the Percolation_Sim base class
 #include "SEIR_Percolation_Sim.h"
 #include <gsl/gsl_linalg.h>
+#include <gsl/gsl_randist.h>
 
 int get_next_edge_event (double *p, double *pf, double *e, 
                          double *rate, int* i_deg, int* j_deg,
                          int* is_add, int max_deg, 
                          double mean_deg, int num_nodes, 
-                         double v);
+                         double v, double del_rate);
 
 int main() {
 
@@ -101,17 +102,20 @@ int main() {
      }
 
    /* rate of approach of degree dist to pf*/
-   double v = 0.2;
+   double v = 0.02;
+
+   /* deletion rate of all edge types */
+   double del_rate = 100;
 
    /* rate of all edge addition and deletion events */
-   double *rate;
+   double rate;
    double mean_deg = net.mean_deg();
-   int *i_deg;
-   int *j_deg;
-   int *is_add;
+   int i_deg;
+   int j_deg;
+   int is_add;
    int num_nodes = net.size();
-   get_next_edge_event (p, pf, e, rate, i_deg, j_deg, is_add, 
-                        max_deg, mean_deg, num_nodes, v);
+   get_next_edge_event (p, pf, e, &rate, &i_deg, &j_deg, &is_add, 
+                        max_deg, mean_deg, num_nodes, v, del_rate);
    free (p);
    free (pf);
 //    vector<double> p = normalize_dist(tmp_dist, sum(tmp_dist));
@@ -146,7 +150,7 @@ int
 get_next_edge_event (double *p, double *pf, double *e, 
                      double *rate, int *i_deg, int *j_deg, 
                      int *is_add, int max_deg, double mean_deg, 
-                     int num_nodes, double v)
+                     int num_nodes, double v, double del_rate)
 {
   /* This function calculates the relative rates of all types of edge
    * additions and deletions, then selects one event proportional to 
@@ -357,6 +361,7 @@ get_next_edge_event (double *p, double *pf, double *e,
          }
        fprintf (stdout, "colum %d sum = %g\n", q+1, colsum);
      }
+   printf ("\n");
 
    gsl_matrix_view a
      = gsl_matrix_view_array (a_data, num_edge_types, num_edge_types);
@@ -369,24 +374,136 @@ get_next_edge_event (double *p, double *pf, double *e,
    gsl_linalg_LU_decomp (&a.matrix, perm, &s);
    
    gsl_linalg_LU_solve (&a.matrix, perm, &b.vector, x);
-   
+
+
+   /*Vector of edge addition rates (omega) followed by vector of
+    * edge deletion rates (psi). These arrays are concatenated 
+    * so that only one lookup table is generated for generating
+    * discrete random variable from them */
+   double * omega_psi;
+
+  omega_psi = (double *) malloc ((2*num_edge_types) * sizeof (double));
+  if (!omega_psi)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+
+   /* Vector of edge deletion rates for all types */
+
+  double * psi;
+
+  psi = &omega_psi[num_edge_types];
+       if (del_rate < 0)
+         {
+           fprintf (stderr, "Error: %s: %d: DEL_RATE is < 0\n",
+                    __FILE__, __LINE__);
+           return (1);
+         }
+
+   for (size_t i = 0; i < (size_t) num_edge_types; i++)
+     {
+       psi[i] = del_rate;
+     }
+
+   /* Vector of edge addition rates for all types */
+   double * omega;
+
+  omega =  omega_psi;
+
+   for (size_t i = 0; i < (size_t) num_edge_types; i++)
+     {
+       omega[i] = gsl_vector_get (x, i) + psi[i];
+       if (omega[i] < 0 )
+         {
+           fprintf (stderr, "Error: %s: %d: DEL_RATE not big enough\n",
+                    __FILE__, __LINE__);
+           return (1);
+         }
+     }
+
+   const gsl_rng_type * T;
+   gsl_rng * rng;
+
+   /* create a generator by the environment variable 
+    * GSL_RNG_TYPE */
+
+   gsl_rng_env_setup();
+
+   T = gsl_rng_default;
+   rng = gsl_rng_alloc (T);
+
+   /* create a lookup table to select an event from */
+   gsl_ran_discrete_t * table;
+
+   table = gsl_ran_discrete_preproc ( (size_t) 2*num_edge_types, omega_psi);
+
+   int manip_edge_type;
+
+   printf ("selected edge types=\n");
+   for (size_t i = 0; i < 10; i++)
+     {
+       size_t k = gsl_ran_discrete (rng, table);
+       if (k > num_edge_types)
+         {
+           *is_add = 0;
+           manip_edge_type = k - num_edge_types;
+           printf ("Deleting edge of type %d\n", manip_edge_type);
+         }
+       else
+         {
+           *is_add = 1;
+           manip_edge_type = k;
+           printf ("Adding edge of type %d\n", manip_edge_type);
+         }
+     }
+   printf ("\n");
+
+
    printf ("eta = \n");
    gsl_vector_fprintf (stdout, x, "%g");
    printf ("\n");
-   
-   gsl_permutation_free (perm);
-   gsl_vector_free (x);
+  
+    
                                                      
    printf ("dot_c = \n");
    for (size_t i = 0; i < num_edge_types; i++)
      {
       fprintf (stdout, "%g\n", dot_c[i]); 
      }
+   printf ("\n");
 
+   printf ("omega = \n");
+   for (size_t i = 0; i < num_edge_types; i++)
+     {
+      fprintf (stdout, "%g\n", omega[i]); 
+     }
+   printf ("\n");
+   
+   printf ("psi = \n");
+   for (size_t i = 0; i < num_edge_types; i++)
+     {
+      fprintf (stdout, "%g\n", psi[i]); 
+     }
+   printf ("\n");
+   
+   printf ("omega_psi = \n");
+   for (size_t i = 0; i < 2*num_edge_types; i++)
+     {
+      fprintf (stdout, "%g\n", omega_psi[i]); 
+     }
+   printf ("\n");
+   
    free (dot_p);
    free (c_2_row_ind_seq);
    free (c_2_col_ind_seq);
    free (dot_c);
    free (a_data);
- return 0; 
+   free (omega_psi);
+   gsl_permutation_free (perm);
+   gsl_vector_free (x);
+   gsl_rng_free (rng);
+   gsl_ran_discrete_free (table);
+   return 0; 
 }
