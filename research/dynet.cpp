@@ -8,7 +8,8 @@ int get_next_edge_event (double *p, double *pf, double *e,
                          double *rate, int* i_deg, int* j_deg,
                          int* is_add, int max_deg, 
                          double mean_deg, int num_nodes, 
-                         double v, double del_rate);
+                         double v, double del_rate, 
+                         gsl_rng* rng);
 
 int main() {
 
@@ -102,7 +103,7 @@ int main() {
      }
 
    /* rate of approach of degree dist to pf*/
-   double v = 0.02;
+   double v = 2e-2;
 
    /* deletion rate of all edge types */
    double del_rate = 100;
@@ -114,10 +115,106 @@ int main() {
    int j_deg;
    int is_add;
    int num_nodes = net.size();
+
+   const gsl_rng_type * T;
+   gsl_rng * rng;
+
+   /* create a generator by the environment variable 
+    * GSL_RNG_TYPE */
+
+   gsl_rng_env_setup();
+
+   T = gsl_rng_default;
+   rng = gsl_rng_alloc (T);
+
+
    get_next_edge_event (p, pf, e, &rate, &i_deg, &j_deg, &is_add, 
-                        max_deg, mean_deg, num_nodes, v, del_rate);
+                        max_deg, mean_deg, num_nodes, v, del_rate,
+                        rng);
+
+       /*arrays containing ids of nodes */
+       int *i_deg_less_one_nodes, *j_deg_less_one_nodes;
+
+       /*counters for indexing above arrays */
+       int count1, count2;
+
+       /* ids of nodes to gain an edge */
+       int node_1, node_2;
+
+   if (is_add)
+     {
+       /*Generate a list of nodes of degrees I_DEG and J_DEG 
+        * and sample one*/
+
+
+
+  count1=count2=0;
+  i_deg_less_one_nodes = (int *) malloc (tmp_dist[i_deg - 1] * sizeof (int));
+  if (!i_deg_less_one_nodes)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+
+  j_deg_less_one_nodes = (int *) malloc (tmp_dist[j_deg - 1] * sizeof (int));
+  if (!j_deg_less_one_nodes)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+
+    vector<Node*> nodes = net.get_nodes();
+    for ( int i = 0; i < nodes.size(); i++ ) 
+      {
+        if (i_deg - 1 == nodes[i]->deg())
+          {
+            i_deg_less_one_nodes[count1] = i;
+            count1++;
+          }
+        if (j_deg - 1 == nodes[i]->deg())
+          {
+            j_deg_less_one_nodes[count2] = i;
+            count2++;
+          }
+      }
+    if ( count1 != tmp_dist[i_deg - 1] || count2 != tmp_dist[j_deg - 1])
+      {
+      fprintf (stderr, "Error: %s: %d: p is incorrect, arrays are wrong size:\n",
+	       __FILE__, __LINE__);
+      fprintf (stderr, "p[%d] * num_nodes = %d, count1 = %d \n", i_deg - 1, tmp_dist[i_deg - 1], count1);
+      fprintf (stderr, "p[%d] * num_nodes = %d, count2 = %d \n", j_deg - 1, tmp_dist[j_deg - 1], count2);
+      return (1);
+      }
+    gsl_ran_choose (rng, &node_1, 1, i_deg_less_one_nodes, count1, sizeof(int));
+    gsl_ran_choose (rng, &node_2, 1, j_deg_less_one_nodes, count2, sizeof(int));
+
+    printf ("adding edges between nodes %d and %d\n", node_1, node_2);
+/*
+    vector<Node*> neighborhood_1 = net.get_node(node_1)->get_neighbors();
+
+    printf ("hood 1 before addition:\n");
+    for (int i = 0; i < neighborhood_1.size(); i++)
+      {
+        printf (" %d", neighborhood_1[i]->id);
+      }
+    printf ("\n");
+    */
+    printf ("node_1 degree was %d \n", net.get_node(node_1)->deg());
+    printf ("node_2 degree was %d \n", net.get_node(node_2)->deg());
+    
+    net.get_node(node_1)-> connect_to(net.get_node(node_2));
+
+    printf ("node_1 degree now %d \n", net.get_node(node_1)->deg());
+    printf ("node_2 degree now %d \n", net.get_node(node_2)->deg());
+
+    free (i_deg_less_one_nodes);
+    free (j_deg_less_one_nodes);
+     }
    free (p);
    free (pf);
+   gsl_rng_free (rng);
 //    vector<double> p = normalize_dist(tmp_dist, sum(tmp_dist));
 //    vector<double> actual_deg_dist = normalize_dist(tmp_dist, sum(tmp_dist));
 /*
@@ -150,7 +247,8 @@ int
 get_next_edge_event (double *p, double *pf, double *e, 
                      double *rate, int *i_deg, int *j_deg, 
                      int *is_add, int max_deg, double mean_deg, 
-                     int num_nodes, double v, double del_rate)
+                     int num_nodes, double v, double del_rate,
+                     gsl_rng * rng)
 {
   /* This function calculates the relative rates of all types of edge
    * additions and deletions, then selects one event proportional to 
@@ -225,7 +323,7 @@ get_next_edge_event (double *p, double *pf, double *e,
         {
           dot_c[q] = t1 * i * j * (dot_p[i] * p[j] 
                                    + p[i] * dot_p[j]) 
-            + t2 * i * j * p[i] * p[j];
+            - t2 * i * j * p[i] * p[j];
           c_2_row_ind_seq[q] = i;
           c_2_col_ind_seq[q] = j;
           q++;
@@ -423,16 +521,6 @@ get_next_edge_event (double *p, double *pf, double *e,
          }
      }
 
-   const gsl_rng_type * T;
-   gsl_rng * rng;
-
-   /* create a generator by the environment variable 
-    * GSL_RNG_TYPE */
-
-   gsl_rng_env_setup();
-
-   T = gsl_rng_default;
-   rng = gsl_rng_alloc (T);
 
    /* create a lookup table to select an event from */
    gsl_ran_discrete_t * table;
@@ -441,25 +529,34 @@ get_next_edge_event (double *p, double *pf, double *e,
 
    int manip_edge_type;
 
-   printf ("selected edge types=\n");
-   for (size_t i = 0; i < 10; i++)
+   printf ("selected edge type=\n");
+   size_t k = gsl_ran_discrete (rng, table);
+   if (k > num_edge_types)
      {
-       size_t k = gsl_ran_discrete (rng, table);
-       if (k > num_edge_types)
-         {
-           *is_add = 0;
-           manip_edge_type = k - num_edge_types;
-           printf ("Deleting edge of type %d\n", manip_edge_type);
-         }
-       else
-         {
-           *is_add = 1;
-           manip_edge_type = k;
-           printf ("Adding edge of type %d\n", manip_edge_type);
-         }
+       *is_add = 0;
+       manip_edge_type = k - num_edge_types;
+       *i_deg = c_2_row_ind_seq[manip_edge_type];
+       *j_deg = c_2_col_ind_seq[manip_edge_type];
+       printf ("Deleting edge of type %d -- %d\n", *i_deg, *j_deg);
+     }
+   else
+     {
+       *is_add = 1;
+       manip_edge_type = k;
+       *i_deg = c_2_row_ind_seq[manip_edge_type];
+       *j_deg = c_2_col_ind_seq[manip_edge_type];
+       printf ("Adding edge of type %d -- %d\n", *i_deg, *j_deg);
      }
    printf ("\n");
 
+   *rate = 0;
+   for (size_t i=0; i< 2*num_edge_types; i++)
+     {
+       *rate += omega_psi[i];
+     }
+
+   /*
+   printf ("rate = %g\n", *rate);
 
    printf ("eta = \n");
    gsl_vector_fprintf (stdout, x, "%g");
@@ -494,7 +591,8 @@ get_next_edge_event (double *p, double *pf, double *e,
       fprintf (stdout, "%g\n", omega_psi[i]); 
      }
    printf ("\n");
-   
+   */
+
    free (dot_p);
    free (c_2_row_ind_seq);
    free (c_2_col_ind_seq);
@@ -503,7 +601,6 @@ get_next_edge_event (double *p, double *pf, double *e,
    free (omega_psi);
    gsl_permutation_free (perm);
    gsl_vector_free (x);
-   gsl_rng_free (rng);
    gsl_ran_discrete_free (table);
    return 0; 
 }
