@@ -143,6 +143,13 @@ int main() {
        /* ids of nodes to gain an edge */
        int node_1, node_2;
 
+       /* id of edge to be deleted */
+       int edge_1;
+
+       /* array of IDs of edges of type to be deleted */
+       int *edge_ids;
+
+
    if (is_add)
      {
        /*Generate a list of nodes of degrees I_DEG and J_DEG 
@@ -214,13 +221,48 @@ int main() {
     free (i_deg_less_one_nodes);
     free (j_deg_less_one_nodes);
      }
+   else
+     {
+
+  edge_ids = (int *) malloc (2 * matrix[i_deg][j_deg] * sizeof (int));
+  if (!edge_ids)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+
+    count1 = 0;
+    for (int i = 0; i<edges.size(); i++) {
+        int ego_deg = edges[i]->get_start()->deg();
+        int alt_deg = edges[i]->get_end()->deg();
+        if (ego_deg == i_deg && alt_deg == j_deg)
+          {
+            edge_ids[count1] = i;
+            count1++;
+          }
+        if (ego_deg == j_deg && alt_deg == i_deg)
+          {
+            edge_ids[count1] = i;
+            count1++;
+          }
+    }
+    if ( count1 != 2*matrix[i_deg][j_deg])
+      {
+      fprintf (stderr, "Error: %s: %d: matrix is incorrect, array is wrong size\n",
+	       __FILE__, __LINE__);
+      return (1);
+      }
+    gsl_ran_choose (rng, &edge_1, 1, edge_ids, count1, sizeof(int));
 
     cout << "mean deg: " << net.mean_deg() << endl;
 
-   Edge*   edge = net.get_edge(1);
+   Edge*   edge = net.get_edge(edge_1);
    edge->disconnect_nodes();
 
     cout << "mean deg: " << net.mean_deg() << endl;
+    free (edge_ids);
+     }
 
 
    free (p);
