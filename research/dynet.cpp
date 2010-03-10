@@ -125,8 +125,9 @@ main ()
   /* tally of existing edge types */
   gsl_histogram2d *c_actual;
 
+      cout << "mean deg: " << net.mean_deg () << endl;
   double time = 0;
-  while (time < 0.4)
+  while (time < 4)
     {
 
       /* tally number of arcs of each type */
@@ -241,7 +242,7 @@ main ()
     printf ("node_1 degree was %d \n", net.get_node(node_1)->deg());
     printf ("node_2 degree was %d \n", net.get_node(node_2)->deg());
  */
-	  net.get_node (node_1)->connect_to (net.get_node (node_2));
+	  nodes[node_1]->connect_to (nodes[node_2]);
 
 /*    printf ("node_1 degree now %d \n", net.get_node(node_1)->deg());
     printf ("node_2 degree now %d \n", net.get_node(node_2)->deg());
@@ -293,16 +294,16 @@ main ()
 	  gsl_ran_choose (rng, &edge_1, 1, edge_ids, count1, sizeof (int));
 
 
-	  Edge *edge = net.get_edge (edge_1);
+	  Edge *edge = edges[edge_1];
 	  edge->disconnect_nodes ();
 
 	  free (edge_ids);
 	}
 
-      cout << "mean deg: " << net.mean_deg () << endl;
       gsl_histogram2d_free (c_actual);
     }				/* end while() */
 
+      cout << "mean deg: " << net.mean_deg () << endl;
   free (p);
   free (pf);
   gsl_rng_free (rng);
@@ -621,7 +622,7 @@ get_next_edge_event (double *p, double *pf,
       manip_edge_type = k - num_edge_types;
       *i_deg = c_2_row_ind_seq[manip_edge_type];
       *j_deg = c_2_col_ind_seq[manip_edge_type];
-      printf ("Deleting edge of type %d -- %d\n", *i_deg, *j_deg);
+    //  printf ("Deleting edge of type %d -- %d\n", *i_deg, *j_deg);
     }
   else
     {
@@ -629,7 +630,7 @@ get_next_edge_event (double *p, double *pf,
       manip_edge_type = k;
       *i_deg = c_2_row_ind_seq[manip_edge_type];
       *j_deg = c_2_col_ind_seq[manip_edge_type];
-      printf ("Adding edge of type %d -- %d\n", *i_deg, *j_deg);
+     // printf ("Adding edge of type %d -- %d\n", *i_deg, *j_deg);
     }
 
   *rate = 0;
