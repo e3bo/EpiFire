@@ -54,17 +54,6 @@ int main() {
     //cout << "num cols: " << matrix[0].size() << endl;
     cout << "mean deg: " << net.mean_deg() << endl;
 
-    for (int i = 0; i<edges.size(); i++) {
-        int ego_deg = edges[i]->get_start()->deg();
-        int alt_deg = edges[i]->get_end()->deg();
-        matrix[ego_deg][alt_deg]++;
-    }
-    for (int i = 0; i<=max_deg; i++) {
-        for (int j=0;j<=max_deg; j++) {
-            cout << matrix[i][j] << "\t";
-        }
-        cout << endl;
-    }
     
    // prototype function to calculate relative rates
 
@@ -129,10 +118,39 @@ int main() {
    T = gsl_rng_default;
    rng = gsl_rng_alloc (T);
 
+   double time = 0;
+   while (time < 0.02)
+     {
+
+   /* tally number of arcs of each type */
+
+    for (int i = 0; i<=max_deg; i++) {
+        for (int j=0;j<=max_deg; j++) {
+            matrix[i][j] = 0;
+        }
+    }
+    for (int i = 0; i<edges.size(); i++) {
+        int ego_deg = edges[i]->get_start()->deg();
+        int alt_deg = edges[i]->get_end()->deg();
+        matrix[ego_deg][alt_deg]++;
+    }
+
+    /* get degree distribution */
+    
+    vector<int> tmp_dist = net.get_deg_dist();
+    vector<double> actual_deg_dist = normalize_dist(tmp_dist, sum(tmp_dist));
+    mean_deg = net.mean_deg();
+
+   for (size_t i = 0; i <= max_deg; i++)
+     {
+      p[i] = actual_deg_dist[i]; 
+     }
+
 
    get_next_edge_event (p, pf, e, &rate, &i_deg, &j_deg, &is_add, 
                         max_deg, mean_deg, num_nodes, v, del_rate,
                         rng);
+   time += gsl_ran_exponential (rng, 1/rate);
 
        /*arrays containing ids of nodes */
        int *i_deg_less_one_nodes, *j_deg_less_one_nodes;
@@ -199,25 +217,15 @@ int main() {
     gsl_ran_choose (rng, &node_1, 1, i_deg_less_one_nodes, count1, sizeof(int));
     gsl_ran_choose (rng, &node_2, 1, j_deg_less_one_nodes, count2, sizeof(int));
 
-    printf ("adding edges between nodes %d and %d\n", node_1, node_2);
-/*
-    vector<Node*> neighborhood_1 = net.get_node(node_1)->get_neighbors();
-
-    printf ("hood 1 before addition:\n");
-    for (int i = 0; i < neighborhood_1.size(); i++)
-      {
-        printf (" %d", neighborhood_1[i]->id);
-      }
-    printf ("\n");
-    */
+/*    printf ("adding edges between nodes %d and %d\n", node_1, node_2);
     printf ("node_1 degree was %d \n", net.get_node(node_1)->deg());
     printf ("node_2 degree was %d \n", net.get_node(node_2)->deg());
-    
+ */   
     net.get_node(node_1)-> connect_to(net.get_node(node_2));
 
-    printf ("node_1 degree now %d \n", net.get_node(node_1)->deg());
+/*    printf ("node_1 degree now %d \n", net.get_node(node_1)->deg());
     printf ("node_2 degree now %d \n", net.get_node(node_2)->deg());
-
+*/
     free (i_deg_less_one_nodes);
     free (j_deg_less_one_nodes);
      }
@@ -255,44 +263,19 @@ int main() {
       }
     gsl_ran_choose (rng, &edge_1, 1, edge_ids, count1, sizeof(int));
 
-    cout << "mean deg: " << net.mean_deg() << endl;
 
    Edge*   edge = net.get_edge(edge_1);
-   edge->disconnect_nodes();
+//   edge->disconnect_nodes();
 
-    cout << "mean deg: " << net.mean_deg() << endl;
     free (edge_ids);
      }
 
+    cout << "mean deg: " << net.mean_deg() << endl;
+     } /* end while() */
 
    free (p);
    free (pf);
    gsl_rng_free (rng);
-//    vector<double> p = normalize_dist(tmp_dist, sum(tmp_dist));
-//    vector<double> actual_deg_dist = normalize_dist(tmp_dist, sum(tmp_dist));
-/*
-    for (int i = 0; i < 10; i++){
-        // Choose and run simulation
-        SEIR_Percolation_Sim sim(&net);
-        // set probability of transmission between neighbors
-        sim.set_transmissibility(0.2);
-        // randomly set some people to the 'exposed' state
-        sim.rand_expose(10);
-        
-        cout << "Iteration and node states:\n";
-        sim.run_simulation();
-        
-        // Print the degrees so we can see if there are any
-        // interesting patterns
-        cout << "Deg: ";
-        for (int j =0; j< net.size(); j++) {
-            cout << net.get_node(j)->deg();
-        } cout << endl;
-        cout << "Epidemic size: " << sim.epidemic_size() << "\n\n";
-        
-        sim.reset();
-    }
-    */
     return 0;
 }
 
