@@ -126,7 +126,7 @@ main ()
   gsl_histogram2d *c_actual;
 
   double time = 0;
-  while (time < 0.02)
+  while (time < 0.4)
     {
 
       /* tally number of arcs of each type */
@@ -134,6 +134,7 @@ main ()
       gsl_histogram2d_set_ranges_uniform (c_actual, 0.5, max_deg + 0.5, 0.5,
 					  max_deg + 0.5);
 
+      edges = net.get_edges ();
       for (int i = 0; i < edges.size (); i++)
 	{
 	  int ego_deg = edges[i]->get_start ()->deg ();
@@ -141,7 +142,9 @@ main ()
 	  gsl_histogram2d_increment (c_actual, ego_deg, alt_deg);
 	}
 
-      gsl_histogram2d_fprintf (stdout, c_actual, "%g", "%g");
+/*      gsl_histogram2d_fprintf (stdout, c_actual, "%g", "%g");*/
+
+/*      printf ("hist sum = %g\n", gsl_histogram2d_sum (c_actual));*/
       /* get degree distribution */
 
       vector < int >tmp_dist = net.get_deg_dist ();
@@ -300,7 +303,6 @@ main ()
       gsl_histogram2d_free (c_actual);
     }				/* end while() */
 
-  free (c_actual);
   free (p);
   free (pf);
   gsl_rng_free (rng);
@@ -613,7 +615,7 @@ get_next_edge_event (double *p, double *pf,
   int manip_edge_type;
 
   size_t k = gsl_ran_discrete (rng, table);
-  if (k > num_edge_types)
+  if (k >=(size_t) num_edge_types)
     {
       *is_add = 0;
       manip_edge_type = k - num_edge_types;
