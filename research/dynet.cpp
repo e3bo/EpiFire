@@ -119,7 +119,7 @@ main ()
   /* this adjusts how the matrix of edge types is 
    * pushed toward being that of a perfectly uncorrelated 
    * network */
-  double tension = 0;
+  double tension = 50;
 
   const gsl_rng_type *T;
   gsl_rng *rng;
@@ -140,6 +140,9 @@ main ()
   double write_point = 0;
   double write_step = 0.05;
   int step_count = 0;
+
+  /* calc_r is non-zero if assortativity calculation should be done */
+  int calc_r = 1;
   while (time < 5)
     {
       step_count++;
@@ -155,12 +158,38 @@ main ()
 					  max_deg + 0.5);
 
       edges = net.get_edges ();
-      for (int i = 0; i < edges.size (); i++)
-	{
-	  int ego_deg = edges[i]->get_start ()->deg ();
-	  int alt_deg = edges[i]->get_end ()->deg ();
-	  gsl_histogram2d_increment (c_actual, ego_deg, alt_deg);
-	}
+      if (calc_r==0)
+        {
+          for (int i = 0; i < edges.size (); i++)
+            {
+              int ego_deg = edges[i]->get_start ()->deg ();
+              int alt_deg = edges[i]->get_end ()->deg ();
+              gsl_histogram2d_increment (c_actual, ego_deg, alt_deg);
+            }
+        }
+      else
+        {
+          /* see Newman 2002 amn eq. (4) */
+          double M_recip = (double) 1/edges.size ();
+          double r_edge;
+          double n1, nd2, d1;
+          n1 = nd2 = d1 = 0;
+          for (int i = 0; i < edges.size (); i++)
+            {
+              int ego_deg = edges[i]->get_start ()->deg ();
+              int alt_deg = edges[i]->get_end ()->deg ();
+              n1 += (double) ego_deg * alt_deg;
+              nd2 += ((double) (ego_deg + alt_deg));
+              d1 += (pow (ego_deg, 2) + pow (alt_deg, 2));
+              gsl_histogram2d_increment (c_actual, ego_deg, alt_deg);
+            }
+          n1 = M_recip * n1;
+          nd2 = pow (M_recip * 0.5 * nd2, 2);
+          d1 = M_recip * 0.5 * d1;
+          r_edge = (n1 - nd2) / (d1 - nd2);
+          printf ("r = %g\n", r_edge);
+
+        }
 
 /*      gsl_histogram2d_fprintf (stdout, c_actual, "%g", "%g");*/
 
