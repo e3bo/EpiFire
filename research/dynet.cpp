@@ -5,6 +5,8 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_histogram2d.h>
 
+
+#define STEPMAX 1000
 /* rounding doubles to nearest integer */
 /* source http://www.cs.tut.fi/~jkorpela/round.html */
 #define round(x) ((x)>=0?(long)((x)+0.5):(long)((x)-0.5))
@@ -15,11 +17,13 @@ int get_next_edge_event (double *p, double *pf,
 			 double *rate, int *i_deg, int *j_deg,
 			 int *is_add, int max_deg,
 			 double mean_deg, int num_nodes,
-			 double v, double del_rate, gsl_rng * rng);
+			 double v, double del_rate, 
+                         double tension, gsl_rng * rng);
 
 int
 main ()
 {
+  int ret = 0;
 
   // Create and populate a network
   Network net ("name", false);
@@ -47,13 +51,13 @@ main ()
     normalize_dist (tmp_dist, sum (tmp_dist));
 
 
-
+/*
   for (int i = 0; i < actual_deg_dist.size (); i++)
     {
       cout << dist[i] << "\t" << actual_deg_dist[i] << endl;
     }
   cout << endl;
-
+*/
   vector < Edge * >edges = net.get_edges ();
   int max_deg = max_element (net.get_deg_series ());
 
@@ -98,10 +102,10 @@ main ()
     }
 
   /* rate of approach of degree dist to pf */
-  double v = 2e-2;
+  double v = 4e-1;
 
   /* deletion rate of all edge types */
-  double del_rate = 100;
+  double del_rate = 10;
 
   /* rate of all edge addition and deletion events */
   double rate;
@@ -110,6 +114,11 @@ main ()
   int j_deg;
   int is_add;
   int num_nodes = net.size ();
+
+  /* this adjusts how the matrix of edge types is 
+   * pushed toward being that of a perfectly uncorrelated 
+   * network */
+  double tension = 2;
 
   const gsl_rng_type *T;
   gsl_rng *rng;
@@ -125,11 +134,18 @@ main ()
   /* tally of existing edge types */
   gsl_histogram2d *c_actual;
 
-      cout << "mean deg: " << net.mean_deg () << endl;
+  //    cout << "mean deg: " << net.mean_deg () << endl;
   double time = 0;
-  while (time < 4)
+  double write_point = 0;
+  double write_step = 0.05;
+  int step_count = 0;
+  while (time < 0.4)
     {
-
+      step_count++;
+      if (step_count > STEPMAX )
+        {
+          break;
+        }
       /* tally number of arcs of each type */
       c_actual = gsl_histogram2d_alloc (max_deg, max_deg);
       gsl_histogram2d_set_ranges_uniform (c_actual, 0.5, max_deg + 0.5, 0.5,
@@ -158,9 +174,33 @@ main ()
 	  p[i] = actual_deg_dist[i];
 	}
 
+printf ("time %g steps %d p ", time, step_count);
+          for (size_t i = 0; i <= max_deg; i++)
+            {
+              printf (" %g", p[i]);
+            }
+          printf (" mean_deg,sum ");
 
-      get_next_edge_event (p, pf, c_actual, &rate, &i_deg, &j_deg, &is_add,
-			   max_deg, mean_deg, num_nodes, v, del_rate, rng);
+
+/*      if ( time > write_point )
+        {
+          printf ("time = %g, steps = %d, p = ", time, step_count);
+          for (size_t i = 0; i <= max_deg; i++)
+            {
+              printf (" %g", p[i]);
+            }
+          printf ("\n");
+          write_point += write_step;
+        }
+*/
+
+      ret = get_next_edge_event (p, pf, c_actual, &rate, &i_deg, &j_deg, &is_add,
+			   max_deg, mean_deg, num_nodes, v, del_rate, 
+                           tension, rng);
+      if (ret)
+        {
+          break;
+        }
       time += gsl_ran_exponential (rng, 1 / rate);
 
       /*arrays containing ids of nodes */
@@ -263,6 +303,13 @@ main ()
 	      edge_ids_size =
 		round (gsl_histogram2d_get (c_actual, i_deg - 1, j_deg - 1));
 	    }
+          if (edge_ids_size == 0)
+            {
+	      fprintf (stderr, "Error: %s: %d: Deleting non-existent edge type\n",
+		       __FILE__, __LINE__);
+	      return (1);
+
+            }
 	  edge_ids = (int *) malloc (edge_ids_size * sizeof (int));
 	  if (!edge_ids)
 	    {
@@ -303,7 +350,7 @@ main ()
       gsl_histogram2d_free (c_actual);
     }				/* end while() */
 
-      cout << "mean deg: " << net.mean_deg () << endl;
+//      cout << "mean deg: " << net.mean_deg () << endl;
   free (p);
   free (pf);
   gsl_rng_free (rng);
@@ -315,7 +362,8 @@ get_next_edge_event (double *p, double *pf,
 		     gsl_histogram2d * c_actual,
 		     double *rate, int *i_deg, int *j_deg,
 		     int *is_add, int max_deg, double mean_deg,
-		     int num_nodes, double v, double del_rate, gsl_rng * rng)
+		     int num_nodes, double v, double del_rate, 
+                     double tension, gsl_rng * rng)
 {
   /* This function calculates the relative rates of all types of edge
    * additions and deletions, then selects one event proportional to 
@@ -398,14 +446,37 @@ get_next_edge_event (double *p, double *pf,
 
   double mean_deg_squared = pow (mean_deg, 2);
   int q = 0;
+  double true_c_actual;
+  double stabilizer;
+  double norm = gsl_histogram2d_sum (c_actual);
   for (size_t j = 1; j <= max_deg; j++)
     {
       for (size_t i = 1; i <= j; i++)
 	{
-	  c_theor[q] = p[i] * i * p[j] * j / mean_deg_squared;
-	  dot_c[q] = t1 * i * j * (dot_p[i] * p[j]
-				   + p[i] * dot_p[j])
-	    - t2 * i * j * p[i] * p[j];
+          if (i != j)
+            {
+              c_theor[q] = 2 * p[i] * i * p[j] * j 
+                / mean_deg_squared;
+              dot_c[q] = 2 * t1 * i * j * (dot_p[i] * p[j]
+                                       + p[i] * dot_p[j])
+                - t2 * i * j * p[i] * p[j];
+              true_c_actual = 2 * 
+                gsl_histogram2d_get (c_actual, i - 1, j - 1)
+                /norm;
+            }
+          else
+            {
+              c_theor[q] = p[i] * i * p[j] * j 
+                / mean_deg_squared;
+              dot_c[q] = t1 * i * j * (dot_p[i] * p[j]
+                                       + p[i] * dot_p[j])
+                - t2 * i * j * p[i] * p[j];
+              true_c_actual = 
+                gsl_histogram2d_get (c_actual, i - 1, j - 1)
+                /norm;
+            }
+          stabilizer = tension * (c_theor[q] - true_c_actual );
+          dot_c[q] += stabilizer;
 	  c_2_row_ind_seq[q] = i;
 	  c_2_col_ind_seq[q] = j;
 	  q++;
@@ -440,7 +511,6 @@ get_next_edge_event (double *p, double *pf,
    * all types of edges with index R when adding an edge of 
    * type indexed by Q */
 
-  int first_el;
 
   /* m is the degree of host at other end of edge */
   int m;
@@ -456,8 +526,6 @@ get_next_edge_event (double *p, double *pf,
       new_edge_j = c_2_col_ind_seq[q];
       old_edge_j = new_edge_j - 1;
 
-      first_el = q * num_edge_types;
-
 
       for (int r = 0; r < num_edge_types; r++)
 	{
@@ -469,33 +537,33 @@ get_next_edge_event (double *p, double *pf,
 	    {
 	      m = c_2_col_ind_seq[r];
 	      dec = old_edge_i * m * p[m] / mean_deg;
-	      a_data[first_el + r] -= dec;
+	      a_data[num_edge_types*r + q] -= dec;
 	    }
 	  else if (c_2_col_ind_seq[r] == old_edge_i)
 	    {
 	      m = c_2_row_ind_seq[r];
 	      dec = old_edge_i * m * p[m] / mean_deg;
-	      a_data[first_el + r] -= dec;
+	      a_data[num_edge_types*r + q] -= dec;
 	    }
 
 	  if (c_2_row_ind_seq[r] == old_edge_j)
 	    {
 	      m = c_2_col_ind_seq[r];
 	      dec = old_edge_j * m * p[m] / mean_deg;
-	      a_data[first_el + r] -= dec;
+	      a_data[num_edge_types*r + q] -= dec;
 	    }
 	  else if (c_2_col_ind_seq[r] == old_edge_j)
 	    {
 	      m = c_2_row_ind_seq[r];
 	      dec = old_edge_j * m * p[m] / mean_deg;
-	      a_data[first_el + r] -= dec;
+	      a_data[num_edge_types*r + q] -= dec;
 	    }
 
 	  /* Direct gains from edge addtion */
 
 	  if (q == r)
 	    {
-	      a_data[first_el + r] += 1;
+	      a_data[num_edge_types*r + q] += 1;
 	    }
 
 	  /* gains of edges because they are produced from 
@@ -506,26 +574,26 @@ get_next_edge_event (double *p, double *pf,
 	    {
 	      m = c_2_col_ind_seq[r];
 	      inc = old_edge_i * m * p[m] / mean_deg;
-	      a_data[first_el + r] += inc;
+	      a_data[num_edge_types*r + q] += inc;
 	    }
 	  else if (c_2_col_ind_seq[r] == new_edge_i)
 	    {
 	      m = c_2_row_ind_seq[r];
 	      inc = old_edge_i * m * p[m] / mean_deg;
-	      a_data[first_el + r] += inc;
+	      a_data[num_edge_types*r + q] += inc;
 	    }
 
 	  if (c_2_row_ind_seq[r] == new_edge_j)
 	    {
 	      m = c_2_col_ind_seq[r];
 	      inc = old_edge_j * m * p[m] / mean_deg;
-	      a_data[first_el + r] += inc;
+	      a_data[num_edge_types*r + q] += inc;
 	    }
 	  else if (c_2_col_ind_seq[r] == new_edge_j)
 	    {
 	      m = c_2_row_ind_seq[r];
 	      inc = old_edge_j * m * p[m] / mean_deg;
-	      a_data[first_el + r] += inc;
+	      a_data[num_edge_types*r + q] += inc;
 	    }
 	}
     }
@@ -536,12 +604,12 @@ get_next_edge_event (double *p, double *pf,
       colsum = 0;
       for (int r = 0; r < num_edge_types; r++)
 	{
-	  colsum += a_data[q * num_edge_types + r];
+	  colsum += a_data[r * num_edge_types + q];
 
 	}
       if (colsum > 1 + 1e-5 || colsum < 1 - 1e-5)
         {
-          fprintf (stderr, "Error: %s: %d: Colsum not equal to one\n",
+          fprintf (stderr, "Error: %s: %d: colsum not equal to one\n",
 	       __FILE__, __LINE__);
           return (1);
         }
@@ -586,9 +654,14 @@ get_next_edge_event (double *p, double *pf,
       return (1);
     }
 
-  for (size_t i = 0; i < (size_t) num_edge_types; i++)
+  q = 0;
+  for (size_t j = 1; j <= max_deg; j++)
     {
-      psi[i] = del_rate;
+      for (size_t i = 1; i <= j; i++)
+	{
+          psi[q] = del_rate * gsl_histogram2d_get (c_actual, i - 1, j - 1);
+	  q++;
+	}
     }
 
   /* Vector of edge addition rates for all types */
@@ -639,7 +712,7 @@ get_next_edge_event (double *p, double *pf,
       *rate += omega_psi[i];
     }
 
-  /*
+/*  
      printf ("\n");
      printf ("rate = %g\n", *rate);
 
@@ -648,14 +721,18 @@ get_next_edge_event (double *p, double *pf,
      printf ("\n");
 
 
-
-     printf ("dot_c = \n");
+*/
+//     printf ("dot_c = \n");
+     double cum = 0;
+     double cum2 = 0;
      for (size_t i = 0; i < num_edge_types; i++)
      {
-     fprintf (stdout, "%g\n", dot_c[i]); 
+//     fprintf (stdout, "%g\n", dot_c[i]); 
+     cum += dot_c[i];
+     cum2 += gsl_vector_get (x, i);
      }
-     printf ("\n");
-
+     printf ("%g %g %g\n", mean_deg, cum, cum2);
+/*
      printf ("omega = \n");
      for (size_t i = 0; i < num_edge_types; i++)
      {
@@ -676,7 +753,7 @@ get_next_edge_event (double *p, double *pf,
      fprintf (stdout, "%g\n", omega_psi[i]); 
      }
      printf ("\n");
-   */
+*/  
 
   free (dot_p);
   free (c_2_row_ind_seq);
