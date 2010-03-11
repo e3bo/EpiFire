@@ -105,7 +105,8 @@ main ()
   double v = 4e-1;
 
   /* deletion rate of all edge types */
-  double del_rate = 10;
+  /* if set to zero, only delete edge as needed to satsify net rates */
+  double del_rate = 0;
 
   /* rate of all edge addition and deletion events */
   double rate;
@@ -118,7 +119,7 @@ main ()
   /* this adjusts how the matrix of edge types is 
    * pushed toward being that of a perfectly uncorrelated 
    * network */
-  double tension = 2;
+  double tension = 0;
 
   const gsl_rng_type *T;
   gsl_rng *rng;
@@ -139,11 +140,13 @@ main ()
   double write_point = 0;
   double write_step = 0.05;
   int step_count = 0;
-  while (time < 0.4)
+  while (time < 5)
     {
       step_count++;
       if (step_count > STEPMAX )
         {
+          fprintf (stderr, "Warning: %s: %d: reached STEPMAX, breaking\n",
+                   __FILE__, __LINE__);
           break;
         }
       /* tally number of arcs of each type */
@@ -173,16 +176,16 @@ main ()
 	{
 	  p[i] = actual_deg_dist[i];
 	}
-
+/*
 printf ("time %g steps %d p ", time, step_count);
           for (size_t i = 0; i <= max_deg; i++)
             {
               printf (" %g", p[i]);
             }
           printf (" mean_deg,sum ");
+*/
 
-
-/*      if ( time > write_point )
+      if ( time > write_point )
         {
           printf ("time = %g, steps = %d, p = ", time, step_count);
           for (size_t i = 0; i <= max_deg; i++)
@@ -192,7 +195,7 @@ printf ("time %g steps %d p ", time, step_count);
           printf ("\n");
           write_point += write_step;
         }
-*/
+
 
       ret = get_next_edge_event (p, pf, c_actual, &rate, &i_deg, &j_deg, &is_add,
 			   max_deg, mean_deg, num_nodes, v, del_rate, 
@@ -448,6 +451,7 @@ get_next_edge_event (double *p, double *pf,
   int q = 0;
   double true_c_actual;
   double stabilizer;
+  double cum_delta_c = 0;
   double norm = gsl_histogram2d_sum (c_actual);
   for (size_t j = 1; j <= max_deg; j++)
     {
@@ -476,13 +480,14 @@ get_next_edge_event (double *p, double *pf,
                 /norm;
             }
           stabilizer = tension * (c_theor[q] - true_c_actual );
+          cum_delta_c += fabs( c_theor[q] - true_c_actual );
           dot_c[q] += stabilizer;
 	  c_2_row_ind_seq[q] = i;
 	  c_2_col_ind_seq[q] = j;
 	  q++;
 	}
     }
-
+printf ("%g\n", cum_delta_c);
   /* rate of change of number of each edge type */
   gsl_vector_view b = gsl_vector_view_array (dot_c, num_edge_types);
 
@@ -659,7 +664,23 @@ get_next_edge_event (double *p, double *pf,
     {
       for (size_t i = 1; i <= j; i++)
 	{
-          psi[q] = del_rate * gsl_histogram2d_get (c_actual, i - 1, j - 1);
+          if (del_rate > 1e-5)
+            {
+              psi[q] = del_rate * gsl_histogram2d_get (c_actual, i - 1, j - 1);
+            }
+          else
+            {
+              if ((gsl_vector_get (x, q)) < 0)
+                {
+                  psi[q] = -gsl_vector_get (x, q)+ 1e-5 ;
+                }
+              else
+                {
+                  psi[q] = 1e-5;
+                }
+
+            }
+              
 	  q++;
 	}
     }
@@ -676,6 +697,7 @@ get_next_edge_event (double *p, double *pf,
 	{
 	  fprintf (stderr, "Error: %s: %d: DEL_RATE not big enough\n",
 		   __FILE__, __LINE__);
+          printf ("om %g, ps %g\n", omega[i], psi[i]);
 	  return (1);
 	}
     }
@@ -721,7 +743,7 @@ get_next_edge_event (double *p, double *pf,
      printf ("\n");
 
 
-*/
+//
 //     printf ("dot_c = \n");
      double cum = 0;
      double cum2 = 0;
@@ -732,7 +754,7 @@ get_next_edge_event (double *p, double *pf,
      cum2 += gsl_vector_get (x, i);
      }
      printf ("%g %g %g\n", mean_deg, cum, cum2);
-/*
+//
      printf ("omega = \n");
      for (size_t i = 0; i < num_edge_types; i++)
      {
