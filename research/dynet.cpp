@@ -6,7 +6,7 @@
 #include <gsl/gsl_histogram2d.h>
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 1000
+#define STEPMAX 10000
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.01
@@ -30,7 +30,7 @@ main ()
 
   // Create and populate a network
   Network net ("name", false);
-  int N = 10000;		// network size
+  int N = 8000;		// network size
   net.populate (N);
 
   // Parameterize degree distribution, a truncated Poisson(5)
@@ -49,23 +49,30 @@ main ()
   // add unconnected nodes
   net.populate (N / 4);
 
+
+  // write initial network to file
+  net.write_edgelist("");
+
   vector < int >tmp_dist = net.get_deg_dist ();
   vector < double >actual_deg_dist =
     normalize_dist (tmp_dist, sum (tmp_dist));
 
 
-/*
-  for (int i = 0; i < actual_deg_dist.size (); i++)
-    {
-      cout << dist[i] << "\t" << actual_deg_dist[i] << endl;
-    }
-  cout << endl;
-*/
   vector < Edge * >edges = net.get_edges ();
   int max_deg = max_element (net.get_deg_series ());
 
 
   // prototype function to calculate relative rates
+
+  // open filestream to record additions and deletions
+  FILE * fp;
+  if ((fp = fopen ("edgechanges.out", "w")) == NULL)
+    {
+      fprintf (stderr, "Error: %s: %d: Failed to open file \n",
+	       __FILE__, __LINE__);
+      return (-1);
+    }
+  fprintf (fp, "time add_or_del start_node_id end_node_id\n");
 
   /* degree distribution */
   double *p;
@@ -324,6 +331,8 @@ printf ("time %g steps %d p ", time, step_count);
     printf ("node_2 degree was %d \n", net.get_node(node_2)->deg());
  */
 	  nodes[node_1]->connect_to (nodes[node_2]);
+          fprintf (fp, "%g a %d %d\n", time, nodes[node_1]->get_id(),
+                   nodes[node_2]->get_id());
 
 /*    printf ("node_1 degree now %d \n", net.get_node(node_1)->deg());
     printf ("node_2 degree now %d \n", net.get_node(node_2)->deg());
@@ -383,8 +392,10 @@ printf ("time %g steps %d p ", time, step_count);
 
 
 	  Edge *edge = edges[edge_1];
+          fprintf (fp, "%g d %d %d\n", time, 
+                   edge->get_start()->get_id(),
+                   edge->get_end()->get_id());
 	  edge->disconnect_nodes ();
-
 	  free (edge_ids);
 	}
 
@@ -395,6 +406,7 @@ printf ("time %g steps %d p ", time, step_count);
   free (p);
   free (pf);
   gsl_rng_free (rng);
+  fclose(fp);
   return 0;
 }
 
