@@ -5,12 +5,15 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_histogram2d.h>
 
-
+/* maximum number of stochastic sim steps */
 #define STEPMAX 1000
+
+/*maximum degree correlations allowed */
+#define MAXREDGE 0.01
+
 /* rounding doubles to nearest integer */
 /* source http://www.cs.tut.fi/~jkorpela/round.html */
 #define round(x) ((x)>=0?(long)((x)+0.5):(long)((x)-0.5))
-
 
 int get_next_edge_event (double *p, double *pf,
 			 gsl_histogram2d * c_actual,
@@ -187,7 +190,13 @@ main ()
           nd2 = pow (M_recip * 0.5 * nd2, 2);
           d1 = M_recip * 0.5 * d1;
           r_edge = (n1 - nd2) / (d1 - nd2);
-          printf ("r = %g\n", r_edge);
+          if (fabs (r_edge) > MAXREDGE)
+            {
+              fprintf (stderr, "Error: %s: %d: R_EDGE > MAXREDGE, breaking\n",
+                       __FILE__, __LINE__);
+              break;
+            }
+
 
         }
 
@@ -480,7 +489,7 @@ get_next_edge_event (double *p, double *pf,
   int q = 0;
   double true_c_actual;
   double stabilizer;
-  double cum_delta_c = 0;
+//  double cum_delta_c = 0;
   double norm = gsl_histogram2d_sum (c_actual);
   for (size_t j = 1; j <= max_deg; j++)
     {
@@ -509,14 +518,14 @@ get_next_edge_event (double *p, double *pf,
                 /norm;
             }
           stabilizer = tension * (c_theor[q] - true_c_actual );
-          cum_delta_c += fabs( c_theor[q] - true_c_actual );
+//          cum_delta_c += fabs( c_theor[q] - true_c_actual );
           dot_c[q] += stabilizer;
 	  c_2_row_ind_seq[q] = i;
 	  c_2_col_ind_seq[q] = j;
 	  q++;
 	}
     }
-printf ("%g\n", cum_delta_c);
+//printf ("%g\n", cum_delta_c);
   /* rate of change of number of each edge type */
   gsl_vector_view b = gsl_vector_view_array (dot_c, num_edge_types);
 
