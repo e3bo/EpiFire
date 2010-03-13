@@ -5,7 +5,7 @@ tmp_research: tmp_research.cpp
 	g++ -I ../src ../src/*.o  tmp_research.cpp -o tmp_research
 
 dynet: dynet.cpp
-	g++ -I ../src ../src/*.o  -g -Wall -lgsl -lgslcblas dynet.cpp -o dynet
+	g++ -I ../src ../src/*.o  -g -lgsl -lgslcblas dynet.cpp -o dynet
 
 
 
