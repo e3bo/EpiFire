@@ -5,8 +5,43 @@
 #include <gsl/gsl_randist.h>
 #include <gsl/gsl_histogram2d.h>
 
+/*headers for hashing */
+#include "uthash.h"    /* hash table macros */
+#include <stddef.h>    /* offset of */
+
+/*structure for events in simulation */
+
+#define MUTATE (char) 'm'
+#define INFECT (char) 'i'
+#define RECOVER (char) 'r'
+#define EDGE_ADD (char) 'a'
+#define EDGE_DEL (char) 'd'
+
+struct event
+{
+  /* key is an aggregate of event code, ego_id, and altar_id */
+  /* TODO use separate structures for different event_codes */ 
+  char event_code;
+  int ego_id;
+  /* The type of the last part of the key must be consistent 
+   * with the keylen calculation below */
+  int altar_id;
+  
+  double rate;
+  int strain_id;
+  int phylo_id;
+
+  /* UT_hash_handle member makes structure a hashtable */
+  UT_hash_handle hh;
+};
+
+void delete_all_events(struct event *event_table);
+void delete_event (struct event *event_table, struct event *ev);
+void print_rates (struct event *event_table);
+
+
 /* maximum number of stochastic sim steps */
-#define STEPMAX 10000
+#define STEPMAX 10
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.01
@@ -23,9 +58,98 @@ int get_next_edge_event (double *p, double *pf,
 			 double v, double del_rate, 
                          double tension, gsl_rng * rng);
 
-int
-main ()
+
+/* functions */
+
+void
+delete_all_events (struct event *event_table)
 {
+  struct event *current_event;
+
+  while (event_table) {
+      current_event = event_table; 
+      HASH_DEL (event_table, current_event);
+      free(current_event);
+  }
+}
+
+void
+print_rates (struct event *event_table)
+{
+  struct event *ev;
+  unsigned z=0;
+
+  for ( ev=event_table; ev != NULL; ev = (struct event*) ev->hh.next){
+      printf ("rate is %g\n", ev->rate);
+  }
+}
+
+
+void
+delete_event (struct event *event_table, struct event *ev)
+{
+  HASH_DEL (event_table, ev);
+  free(ev);
+}
+
+int
+main (int argc, char *argv[])
+{
+  struct event *ev1, ev2, *event_table = NULL;
+  unsigned z, keylen;
+
+  keylen = offsetof (struct event, altar_id) + sizeof(int) - offsetof (struct event, event_code);
+
+    printf ("count before additions: %d\n", HASH_COUNT (event_table));
+    if (event_table == NULL)
+      {
+        printf (" is null");
+      }
+
+for(z = 0; z < 10; z++) {
+        ev1 = (struct event*)malloc(sizeof(struct event));
+        memset(ev1, 0, sizeof(struct event));
+        ev1->event_code = 'm';
+        ev1->ego_id = z;
+        ev1->altar_id = z*z;
+        ev1->phylo_id = 100;
+        ev1->rate = 0.1 * .3 * z;
+
+        HASH_ADD( hh, event_table, event_code, keylen, ev1);
+    printf ("count during additions: %d\n", HASH_COUNT (event_table));
+    }
+
+    /* look for one specific event */
+    memset(&ev2,0,sizeof(struct event));
+    ev2.event_code = MUTATE;
+    ev2.ego_id = 5;
+    ev2.altar_id = 25;
+    HASH_FIND( hh, event_table, &ev2.event_code, keylen , ev1);
+    if (ev1) printf("found: node %d, phylo %d\n", ev1->ego_id, ev1->phylo_id);
+
+    print_rates (event_table);
+
+
+    printf ("count before deletion: %d\n", HASH_COUNT (event_table));
+    delete_event (event_table, ev1);
+    printf ("count after deletion: %d\n", HASH_COUNT (event_table));
+    print_rates (event_table);
+for(z = 10; z < 20; z++) {
+        ev1 = (struct event*)malloc(sizeof(struct event));
+        memset(ev1, 0, sizeof(struct event));
+        ev1->event_code = 'm';
+        ev1->ego_id = z;
+        ev1->altar_id = z*z;
+        ev1->phylo_id = 100;
+        ev1->rate = 0.1 * .3 * z;
+
+        HASH_ADD( hh, event_table, event_code, keylen, ev1);
+    printf ("count during additions: %d\n", HASH_COUNT (event_table));
+    }
+    print_rates (event_table);
+    delete_all_events (event_table);
+    printf ("count after deletions: %d\n", HASH_COUNT (event_table));
+
   int ret = 0;
 
   // Create and populate a network
