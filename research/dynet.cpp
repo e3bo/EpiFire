@@ -39,9 +39,10 @@ void delete_all_events(struct event *event_table);
 void delete_event (struct event *event_table, struct event *ev);
 void print_rates (struct event *event_table);
 
+int add_edge (int i_deg, int j_deg, Network* net, gsl_rng * rng, FILE * fp);
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 10
+#define STEPMAX 1000
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.01
@@ -95,6 +96,7 @@ delete_event (struct event *event_table, struct event *ev)
 int
 main (int argc, char *argv[])
 {
+  double rate_sum = 0;
   struct event *ev1, ev2, *event_table = NULL;
   unsigned z, keylen;
 
@@ -269,23 +271,168 @@ for(z = 10; z < 20; z++) {
   /* tally of existing edge types */
   gsl_histogram2d *c_actual;
 
-  //    cout << "mean deg: " << net.mean_deg () << endl;
-  double time = 0;
   double write_point = 0;
   double write_step = 0.05;
-  int step_count = 0;
 
   /* calc_r is non-zero if assortativity calculation should be done */
   int calc_r = 1;
+
+
+  /* put initial edge addition or deletion into table */
+
+  /*initialize table to NULL pointer */
+
+  event_table = NULL;
+      /* tally number of arcs of each type */
+      c_actual = gsl_histogram2d_alloc (max_deg, max_deg);
+      gsl_histogram2d_set_ranges_uniform (c_actual, 0.5, max_deg + 0.5, 0.5,
+					  max_deg + 0.5);
+
+      edges = net.get_edges ();
+      if (calc_r==0)
+        {
+          for (int i = 0; i < edges.size (); i++)
+            {
+              int ego_deg = edges[i]->get_start ()->deg ();
+              int alt_deg = edges[i]->get_end ()->deg ();
+              gsl_histogram2d_increment (c_actual, ego_deg, alt_deg);
+            }
+        }
+      else
+        {
+          /* see Newman 2002 amn eq. (4) */
+          double M_recip = (double) 1/edges.size ();
+          double r_edge;
+          double n1, nd2, d1;
+          n1 = nd2 = d1 = 0;
+          for (int i = 0; i < edges.size (); i++)
+            {
+              int ego_deg = edges[i]->get_start ()->deg ();
+              int alt_deg = edges[i]->get_end ()->deg ();
+              n1 += (double) ego_deg * alt_deg;
+              nd2 += ((double) (ego_deg + alt_deg));
+              d1 += (pow (ego_deg, 2) + pow (alt_deg, 2));
+              gsl_histogram2d_increment (c_actual, ego_deg, alt_deg);
+            }
+          n1 = M_recip * n1;
+          nd2 = pow (M_recip * 0.5 * nd2, 2);
+          d1 = M_recip * 0.5 * d1;
+          r_edge = (n1 - nd2) / (d1 - nd2);
+          if (fabs (r_edge) > MAXREDGE)
+            {
+              fprintf (stderr, "Error: %s: %d: R_EDGE > MAXREDGE, breaking\n",
+                       __FILE__, __LINE__);
+              exit(1);
+            }
+
+
+        }
+
+      tmp_dist = net.get_deg_dist ();
+      actual_deg_dist =
+	normalize_dist (tmp_dist, sum (tmp_dist));
+      mean_deg = net.mean_deg ();
+
+      for (size_t i = 0; i <= max_deg; i++)
+	{
+	  p[i] = actual_deg_dist[i];
+	}
+
+
+      ret = get_next_edge_event (p, pf, c_actual, &rate, &i_deg, &j_deg, &is_add,
+			   max_deg, mean_deg, num_nodes, v, del_rate, 
+                           tension, rng);
+      if (ret)
+        {
+          exit(1);
+        }
+
+      rate_sum += rate;
+      ev1 = (struct event*)malloc(sizeof(struct event));
+      memset(ev1, 0, sizeof(struct event));
+      ev1->ego_id = i_deg;
+      ev1->altar_id = j_deg;
+      ev1->rate = rate;
+      if (is_add)
+        {
+          ev1->event_code = EDGE_ADD;
+          HASH_ADD( hh, event_table, event_code, keylen, ev1);
+        }
+      else
+        {
+          ev1->event_code = EDGE_DEL;
+          HASH_ADD( hh, event_table, event_code, keylen, ev1);
+        }
+
+
+
+
+  double time = 0;
+  int step_count = 0;
+  double rand;
+  double cum_density;
   while (time < 5)
     {
       step_count++;
+      if (step_count % (STEPMAX / 10) == 0)
+        {
+          for (size_t i=0; i <= max_deg; i++)
+            {
+              printf(" %g", p[i]);
+
+            }
+          printf ("\n");
+
+        }
       if (step_count > STEPMAX )
         {
           fprintf (stderr, "Warning: %s: %d: reached STEPMAX, breaking\n",
                    __FILE__, __LINE__);
           break;
         }
+
+      /* determine time of next event */
+      time += gsl_ran_exponential (rng, 1 / rate_sum);
+
+      /* select one event to be next proportionally to it's rate */
+
+      rand = rate_sum *gsl_rng_uniform (rng);
+      cum_density = 0;
+      for ( ev1 =event_table; ev1 != NULL; ev1 = (struct event*) ev1->hh.next){
+          cum_density += ev1->rate;
+          if (cum_density > rand )
+            {
+              break;
+            }
+      }
+
+      switch (ev1->event_code)
+        {
+        case EDGE_ADD:
+            {
+
+
+
+            }
+         break;
+        case EDGE_DEL:
+         break;
+        default:
+         fprintf (stderr, "Error: %s: %d: Illegal event code\n", 
+                  __FILE__, __LINE__);
+         ret = 1;
+        }
+      if (ret == 1)
+        {
+          break;
+        }
+
+
+
+
+
+
+
       /* tally number of arcs of each type */
       c_actual = gsl_histogram2d_alloc (max_deg, max_deg);
       gsl_histogram2d_set_ranges_uniform (c_actual, 0.5, max_deg + 0.5, 0.5,
@@ -331,11 +478,6 @@ for(z = 10; z < 20; z++) {
 
         }
 
-/*      gsl_histogram2d_fprintf (stdout, c_actual, "%g", "%g");*/
-
-/*      printf ("hist sum = %g\n", gsl_histogram2d_sum (c_actual));*/
-      /* get degree distribution */
-
       vector < int >tmp_dist = net.get_deg_dist ();
       vector < double >actual_deg_dist =
 	normalize_dist (tmp_dist, sum (tmp_dist));
@@ -345,25 +487,6 @@ for(z = 10; z < 20; z++) {
 	{
 	  p[i] = actual_deg_dist[i];
 	}
-/*
-printf ("time %g steps %d p ", time, step_count);
-          for (size_t i = 0; i <= max_deg; i++)
-            {
-              printf (" %g", p[i]);
-            }
-          printf (" mean_deg,sum ");
-*/
-
-      if ( time > write_point )
-        {
-          printf ("time = %g, steps = %d, p = ", time, step_count);
-          for (size_t i = 0; i <= max_deg; i++)
-            {
-              printf (" %g", p[i]);
-            }
-          printf ("\n");
-          write_point += write_step;
-        }
 
 
       ret = get_next_edge_event (p, pf, c_actual, &rate, &i_deg, &j_deg, &is_add,
@@ -373,7 +496,25 @@ printf ("time %g steps %d p ", time, step_count);
         {
           break;
         }
-      time += gsl_ran_exponential (rng, 1 / rate);
+      rate_sum += rate;
+
+
+      ev1 = (struct event*)malloc(sizeof(struct event));
+      memset(ev1, 0, sizeof(struct event));
+      ev1->ego_id = i_deg;
+      ev1->altar_id = j_deg;
+      ev1->rate = rate;
+      if (is_add)
+        {
+          ev1->event_code = EDGE_ADD;
+          HASH_ADD( hh, event_table, event_code, keylen, ev1);
+        }
+      else
+        {
+          ev1->event_code = EDGE_DEL;
+          HASH_ADD( hh, event_table, event_code, keylen, ev1);
+        }
+
 
       /*arrays containing ids of nodes */
       int *i_deg_less_one_nodes, *j_deg_less_one_nodes;
@@ -392,7 +533,6 @@ printf ("time %g steps %d p ", time, step_count);
 
       /* size of edge_ids array */
       int edge_ids_size;
-
 
       if (is_add)
 	{
@@ -963,3 +1103,4 @@ get_next_edge_event (double *p, double *pf,
   gsl_ran_discrete_free (table);
   return 0;
 }
+
