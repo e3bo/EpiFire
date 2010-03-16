@@ -17,7 +17,6 @@
 #define EDGE_ADD (char) 'a'
 #define EDGE_DEL (char) 'd'
 
-
 struct event
 {
   /* key is an aggregate of event code, ego_id, and altar_id */
@@ -42,15 +41,20 @@ struct event
 /*hash table as global variable */
 struct event *event_table = NULL;
 
-
+/* hash table functions */
 void delete_all_events ();
 void delete_event (struct event *ev);
 void print_rates (struct event *event_table);
 
-int add_edge (int i_deg, int j_deg, Network * net, gsl_rng * rng, FILE * fp);
+/* array to track state of the each node */
+char* node_states;
+
+/* arrays to track states of nodes of each degree class */
+int *S_k;
+int *I_k;
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 10000
+#define STEPMAX 100
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.01
@@ -106,12 +110,23 @@ delete_event (struct event *ev)
 int
 main (int argc, char *argv[])
 {
+  /* epsilon is the initial fraction of edges pointing to suscectible
+   * hosts from infected hosts */
+  double epsilon = 1e-2;
+
+  /* I_k_initial holds the number of initially infected hosts in 
+   * degree class k, based on epsilon */
+  int I_k_initial;
+
+  /* array holding IDS of initially infected hosts */
+  int *I_k_initial_IDs;
+
   double rate_sum = 0;
   struct event *ev, *ev1, ev2; 
   unsigned z, keylen;
 
 	    /*arrays containing ids of nodes */
-	    int *i_deg_less_one_nodes, *j_deg_less_one_nodes;
+	    int *i_deg_nodes, *i_deg_less_one_nodes, *j_deg_less_one_nodes;
 
 	    /*counters for indexing above arrays */
 	    int count1, count2;
@@ -311,12 +326,89 @@ main (int argc, char *argv[])
   /* calc_r is non-zero if assortativity calculation should be done */
   int calc_r = 1;
 
+  /* put intial infection and recovery event into table */
 
+  node_states = (char *) malloc ( (num_nodes + 1)*sizeof(char) );
+  if (!node_states)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+  memset (node_states, 's', num_nodes*sizeof (char) - 1);
+  node_states[num_nodes *sizeof (char) - 1] = '\0';
+
+  S_k = (int *) malloc ( (max_deg + 1) * sizeof(int) );
+  if (!S_k)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+  for (size_t i = 0; i <= max_deg; i++)
+    {
+      S_k[i] = tmp_dist[i];
+    }
+
+  I_k = (int *) calloc ( (max_deg + 1), sizeof(int));
+  if (!I_k)
+    {
+      fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+  
+  for (size_t i = 0; i <= max_deg; i++)
+    {
+      I_k_initial = round ( (1 - pow (1 - epsilon, i)) * tmp_dist[i]);
+      printf ("I_k_initial = %d given k = %d\n", I_k_initial, i);
+  count1 = 0;
+  tmp_dist = net.get_deg_dist ();
+  i_deg_nodes =
+	      (int *) malloc (tmp_dist[i] * sizeof (int));
+      if (!i_deg_nodes)
+        {
+          fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+                   __FILE__, __LINE__);
+          return (1);
+        }
+  I_k_initial_IDs =
+	      (int *) malloc (I_k_initial * sizeof (int));
+      if (!I_k_initial_IDs)
+        {
+          fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
+                   __FILE__, __LINE__);
+          return (1);
+        }
+
+
+      vector < Node * >nodes = net.get_nodes ();
+      for (int j = 0; j < nodes.size (); j++)
+        {
+          if (i == nodes[j]->deg ())
+            {
+              i_deg_nodes[count1] = j;
+              count1++;
+            }
+        }
+      if (count1 != tmp_dist[i])
+        {
+          fprintf (stderr,
+                   "Error: %s: %d: p is incorrect, arrays are wrong size:\n",
+                   __FILE__, __LINE__);
+          return (1);
+        }
+      gsl_ran_choose (rng, I_k_initial_IDs, I_k_initial, i_deg_nodes, count1, sizeof (int));
+      for (size_t j=0; j < I_k_initial; j++)
+        {
+          printf ("infecting node %d with degree %d\n", I_k_initial_IDs[j], nodes[I_k_initial_IDs[j]]->deg ());
+
+        }
+      free (I_k_initial_IDs);
+      free (i_deg_nodes);
+    }
   /* put initial edge addition or deletion into table */
 
-  /*initialize table to NULL pointer */
-
-  event_table = NULL;
   /* tally number of arcs of each type */
   c_actual = gsl_histogram2d_alloc (max_deg, max_deg);
   gsl_histogram2d_set_ranges_uniform (c_actual, 0.5, max_deg + 0.5, 0.5,
@@ -382,6 +474,13 @@ main (int argc, char *argv[])
 
   rate_sum += rate;
   ev1 = (struct event *) malloc (sizeof (struct event));
+  if (!ev1)
+    {
+      fprintf (stderr,
+	       "Error: %s: %d: malloc failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
   memset (ev1, 0, sizeof (struct event));
   ev1->i_deg = i_deg;
   ev1->j_deg = j_deg;
@@ -443,6 +542,7 @@ main (int argc, char *argv[])
 	      break;
 	    }
 	}
+
 
       switch (ev->event_code)
 	{
@@ -595,6 +695,13 @@ main (int argc, char *argv[])
 
 
 	    ev1 = (struct event *) malloc (sizeof (struct event));
+            if (!ev1)
+              {
+                fprintf (stderr,
+                         "Error: %s: %d: malloc failed\n",
+                         __FILE__, __LINE__);
+                return (1);
+              }
 	    memset (ev1, 0, sizeof (struct event));
 	    ev1->i_deg = i_deg;
 	    ev1->j_deg = j_deg;
@@ -751,6 +858,13 @@ main (int argc, char *argv[])
 	    rate_sum += rate;
 
 	    ev1 = (struct event *) malloc (sizeof (struct event));
+            if (!ev1)
+              {
+                fprintf (stderr,
+                         "Error: %s: %d: malloc failed\n",
+                         __FILE__, __LINE__);
+                return (1);
+              }
 	    memset (ev1, 0, sizeof (struct event));
 	    ev1->i_deg = i_deg;
 	    ev1->j_deg = j_deg;
@@ -788,6 +902,10 @@ main (int argc, char *argv[])
   free (pf);
   gsl_rng_free (rng);
   fclose (fp);
+
+  free (node_states);
+  free (S_k);
+  free (I_k);
   return 0;
 }
 
@@ -1216,4 +1334,10 @@ get_next_edge_event (double *p, double *pf,
   gsl_vector_free (x);
   gsl_ran_discrete_free (table);
   return 0;
+}
+
+int
+infect (int infector_id, int infectee_id)
+{
+return 0;
 }
