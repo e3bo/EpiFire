@@ -38,13 +38,20 @@ struct event
   UT_hash_handle hh;
 };
 
-/*hash table as global variable */
+/** global variables **/
+
+Network net ("name", false);
+
+/*hash table */
 struct event *event_table = NULL;
 
-/* hash table functions */
-void delete_all_events ();
-void delete_event (struct event *ev);
-void print_rates (struct event *event_table);
+/*keylen holds the size of the hash key */
+unsigned keylen;
+
+/* sum of rate of all events in hash table */
+double rate_sum;
+
+
 
 /* array to track state of the each node */
 char* node_states;
@@ -54,14 +61,24 @@ int *S_k;
 int *I_k;
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 100
+#define STEPMAX 10000
 
 /*maximum degree correlations allowed */
-#define MAXREDGE 0.01
+#define MAXREDGE 0.05
+
+/* SIR model parameters */
+double trans_rate;
+double recov_rate;
+
+/* OUTSIDE is the ID of any host outside of population that transmit 
+ * the initial infections */
+#define OUTSIDE -99
 
 /* rounding doubles to nearest integer */
 /* source http://www.cs.tut.fi/~jkorpela/round.html */
 #define round(x) ((x)>=0?(long)((x)+0.5):(long)((x)-0.5))
+
+/** funcition prototypes **/
 
 int get_next_edge_event (double *p, double *pf,
 			 gsl_histogram2d * c_actual,
@@ -71,8 +88,14 @@ int get_next_edge_event (double *p, double *pf,
 			 double v, double del_rate,
 			 double tension, gsl_rng * rng);
 
+int infect (int infector_id, int infectee_id);
+int recover (int recoverer_id);
+void delete_all_events ();
+void delete_event (struct event *ev);
+void delete_event_by_key (char event_code, int ego_id, int altar_id);
+void print_rates (struct event *event_table);
 
-/* functions */
+/** functions **/
 
 void
 delete_all_events ()
@@ -107,12 +130,33 @@ delete_event (struct event *ev)
   free (ev);
 }
 
+void
+delete_event_by_key (char event_code, int ego_id, int altar_id)
+{
+
+  struct event *ev1, ev2; 
+  
+  memset (&ev2, 0, sizeof (struct event));
+  ev2.event_code = event_code;
+  ev2.ego_id = ego_id;
+  ev2.altar_id = altar_id;
+  HASH_FIND (hh, event_table, &ev2.event_code, keylen, ev1);
+  if (!ev1)
+    {
+      fprintf (stderr, "Error: %s: %d: Failed to find hash key \n",
+	       __FILE__, __LINE__);
+      exit (1);
+    }
+  HASH_DEL (event_table, ev1);
+  free (ev1);
+}
+
 int
 main (int argc, char *argv[])
 {
   /* epsilon is the initial fraction of edges pointing to suscectible
    * hosts from infected hosts */
-  double epsilon = 1e-2;
+  double epsilon = 1e-1;
 
   /* I_k_initial holds the number of initially infected hosts in 
    * degree class k, based on epsilon */
@@ -121,9 +165,10 @@ main (int argc, char *argv[])
   /* array holding IDS of initially infected hosts */
   int *I_k_initial_IDs;
 
-  double rate_sum = 0;
+  
+
   struct event *ev, *ev1, ev2; 
-  unsigned z, keylen;
+  unsigned z;
 
 	    /*arrays containing ids of nodes */
 	    int *i_deg_nodes, *i_deg_less_one_nodes, *j_deg_less_one_nodes;
@@ -142,6 +187,10 @@ main (int argc, char *argv[])
 
 	    /* size of edge_ids array */
 	    int edge_ids_size;
+
+            trans_rate = 2;
+            recov_rate = 1;
+  rate_sum = 0;
 
 
   keylen =
@@ -204,7 +253,7 @@ main (int argc, char *argv[])
   int ret = 0;
 
   // Create and populate a network
-  Network net ("name", false);
+//  Network net ("name", false);
   int N = 8000;			// network size
   net.populate (N);
 
@@ -335,8 +384,8 @@ main (int argc, char *argv[])
 	       __FILE__, __LINE__);
       return (1);
     }
-  memset (node_states, 's', num_nodes*sizeof (char) - 1);
-  node_states[num_nodes *sizeof (char) - 1] = '\0';
+  memset (node_states, 's', num_nodes*sizeof (char));
+  node_states[num_nodes * sizeof (char)] = '\0';
 
   S_k = (int *) malloc ( (max_deg + 1) * sizeof(int) );
   if (!S_k)
@@ -401,11 +450,14 @@ main (int argc, char *argv[])
       gsl_ran_choose (rng, I_k_initial_IDs, I_k_initial, i_deg_nodes, count1, sizeof (int));
       for (size_t j=0; j < I_k_initial; j++)
         {
-          printf ("infecting node %d with degree %d\n", I_k_initial_IDs[j], nodes[I_k_initial_IDs[j]]->deg ());
-
+          infect ( OUTSIDE, I_k_initial_IDs[j]);
         }
       free (I_k_initial_IDs);
       free (i_deg_nodes);
+    }
+  for (size_t i=0; i <= max_deg; i++)
+    {
+      printf ("%d %d %d\n", i, S_k[i], I_k[i]);
     }
   /* put initial edge addition or deletion into table */
 
@@ -511,9 +563,10 @@ main (int argc, char *argv[])
       step_count++;
       if (step_count % (STEPMAX / 10) == 0)
 	{
+          printf ("%g ", time);
 	  for (size_t i = 0; i <= max_deg; i++)
 	    {
-	      printf (" %g", p[i]);
+	      printf (" %d", I_k[i]);
 
 	    }
 	  printf ("\n");
@@ -543,6 +596,14 @@ main (int argc, char *argv[])
 	    }
 	}
 
+      int deleted_edge_start_id; 
+      int deleted_edge_start_previous_degree;
+         int deleted_edge_end_id; 
+         int deleted_edge_end_previous_degree;
+      int added_edge_start_id; 
+      int added_edge_start_previous_degree;
+         int added_edge_end_id; 
+         int added_edge_end_previous_degree;
 
       switch (ev->event_code)
 	{
@@ -612,17 +673,15 @@ main (int argc, char *argv[])
 	    gsl_ran_choose (rng, &node_2, 1, j_deg_less_one_nodes, count2,
 			    sizeof (int));
 
-/*    printf ("adding edges between nodes %d and %d\n", node_1, node_2);
-    printf ("node_1 degree was %d \n", net.get_node(node_1)->deg());
-    printf ("node_2 degree was %d \n", net.get_node(node_2)->deg());
- */
+            added_edge_start_id = node_1;
+            added_edge_start_previous_degree = i_deg - 1;
+            added_edge_end_id = node_2;
+            added_edge_end_previous_degree = j_deg - 1;
+
 	    nodes[node_1]->connect_to (nodes[node_2]);
 	    fprintf (fp, "%g a %d %d\n", time, nodes[node_1]->get_id (),
 		     nodes[node_2]->get_id ());
 
-/*    printf ("node_1 degree now %d \n", net.get_node(node_1)->deg());
-    printf ("node_2 degree now %d \n", net.get_node(node_2)->deg());
-*/
 	    free (i_deg_less_one_nodes);
 	    free (j_deg_less_one_nodes);
 
@@ -718,8 +777,46 @@ main (int argc, char *argv[])
 		HASH_ADD (hh, event_table, event_code, keylen, ev1);
 	      }
 	    
-            /* remove event ev from the table */
+            /* update system dynamic variables */
 	    rate_sum -= ev->rate;
+            switch (node_states[added_edge_start_id])
+              {
+              case 's':
+                S_k[added_edge_start_previous_degree]--;
+                S_k[added_edge_start_previous_degree + 1]++;
+                break;
+              case 'i':
+                I_k[added_edge_start_previous_degree]--;
+                I_k[added_edge_start_previous_degree + 1]++;
+                break;
+              case 'r':
+                break;
+             default:
+                fprintf (stderr,
+                         "Error: %s: %d: invalid state for node\n",
+                         __FILE__, __LINE__);
+                 exit (1);
+              }
+            switch (node_states[added_edge_end_id])
+              {
+              case 's':
+                S_k[added_edge_end_previous_degree]--;
+                S_k[added_edge_end_previous_degree + 1]++;
+                break;
+              case 'i':
+                I_k[added_edge_end_previous_degree]--;
+                I_k[added_edge_end_previous_degree + 1]++;
+                break;
+              case 'r':
+                break;
+             default:
+                fprintf (stderr,
+                         "Error: %s: %d: invalid state for node\n",
+                         __FILE__, __LINE__);
+                 exit (1);
+              }
+            
+              /* remove event ev from the table */
 	    delete_event (ev);
 
 	    gsl_histogram2d_free (c_actual);
@@ -783,9 +880,14 @@ main (int argc, char *argv[])
 
 
 	    Edge *edge = edges[edge_1];
+            deleted_edge_start_id = edge->get_start () ->get_id (); 
+            deleted_edge_start_previous_degree = edge->get_start()->deg ();
+            deleted_edge_end_id = edge->get_end () ->get_id (); 
+            deleted_edge_end_previous_degree = edge->get_end ()->deg ();
+            
 	    fprintf (fp, "%g d %d %d\n", time,
-		     edge->get_start ()->get_id (),
-		     edge->get_end ()->get_id ());
+		     deleted_edge_start_id,
+		     deleted_edge_end_id);
 	    edge->disconnect_nodes ();
 	    free (edge_ids);
 
@@ -857,6 +959,7 @@ main (int argc, char *argv[])
 	      }
 	    rate_sum += rate;
 
+
 	    ev1 = (struct event *) malloc (sizeof (struct event));
             if (!ev1)
               {
@@ -880,14 +983,59 @@ main (int argc, char *argv[])
 		ev1->event_code = EDGE_DEL;
 		HASH_ADD (hh, event_table, event_code, keylen, ev1);
 	      }
-	    /* remove event ev from the table */
+            
+            /* update system dynamic variables */
 	    rate_sum -= ev->rate;
+            switch (node_states[deleted_edge_start_id])
+              {
+          case 's':
+              S_k[deleted_edge_start_previous_degree]--;
+              S_k[deleted_edge_start_previous_degree - 1]++;
+              break;
+          case 'i':
+              I_k[deleted_edge_start_previous_degree]--;
+              I_k[deleted_edge_start_previous_degree - 1]++;
+              break;
+              case 'r':
+                break;
+             default:
+                fprintf (stderr,
+                         "Error: %s: %d: invalid state for node\n",
+                         __FILE__, __LINE__);
+                 exit (1);
+              }
+            switch (node_states[deleted_edge_end_id])
+              {
+          case 's':
+              S_k[deleted_edge_end_previous_degree]--;
+              S_k[deleted_edge_end_previous_degree - 1]++;
+              break;
+          case 'i':
+              I_k[deleted_edge_end_previous_degree]--;
+              I_k[deleted_edge_end_previous_degree - 1]++;
+              break;
+              case 'r':
+                break;
+             default:
+                fprintf (stderr,
+                         "Error: %s: %d: invalid state for node\n",
+                         __FILE__, __LINE__);
+                 exit (1);
+              }
+
+
+	    /* remove event ev from the table */
 	    delete_event (ev);
 
 	    gsl_histogram2d_free (c_actual);
 	  }
 	  break;
-	default:
+        case RECOVER:
+          {
+            recover (ev->ego_id);
+          }
+          break;
+        default:
 	  fprintf (stderr, "Error: %s: %d: Illegal event code\n",
 		   __FILE__, __LINE__);
 	  ret = 1;
@@ -1339,5 +1487,55 @@ get_next_edge_event (double *p, double *pf,
 int
 infect (int infector_id, int infectee_id)
 {
-return 0;
+  int infectee_id_deg;
+  struct event * ev1;
+
+  /* update system dynamic variable */
+  node_states[infectee_id] = 'i';
+  vector < Node * >nodes = net.get_nodes ();
+  infectee_id_deg = nodes[infectee_id] ->deg();
+  S_k[infectee_id_deg]--;
+  I_k[infectee_id_deg]++;
+
+  /* add event of infectee recovering from the table */
+  rate_sum += recov_rate;
+  ev1 = (struct event *) malloc (sizeof (struct event));
+  if (!ev1)
+    {
+      fprintf (stderr,
+	       "Error: %s: %d: malloc failed\n",
+	       __FILE__, __LINE__);
+      return (1);
+    }
+  memset (ev1, 0, sizeof (struct event));
+  ev1->ego_id = infectee_id;
+  ev1->rate = recov_rate;
+  ev1->event_code = RECOVER;
+  HASH_ADD (hh, event_table, event_code, keylen, ev1);
+ 
+  /* add events of infectee infecting susceptible neighbors */
+
+  /* remove event of infected host getting infeced by infectious
+   * neighbors */
+  return 0;
+}
+
+int recover (int recoverer_id)
+{
+ 
+  int recoverer_id_deg;
+  struct event * ev1;
+  
+  /* update system dynamic variable */
+ 
+  node_states[recoverer_id] = 'r';
+  vector < Node * >nodes = net.get_nodes ();
+  recoverer_id_deg = nodes[recoverer_id]->deg();
+  I_k[recoverer_id_deg]--;
+  
+  /* remove event of recoverer recovering again */
+
+  rate_sum -= recov_rate;
+  delete_event_by_key (RECOVER, recoverer_id, 0);
+  return 0; 
 }
