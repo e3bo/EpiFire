@@ -96,6 +96,7 @@ void delete_all_events ();
 void delete_event (struct event *ev);
 void delete_event_by_key (char event_code, int ego_id, int alter_id);
 void print_rates (struct event *event_table);
+double get_rate_sum ();
 
 /** functions **/
 
@@ -562,15 +563,39 @@ main (int argc, char *argv[])
   while (time < 5)
     {
       step_count++;
-      if (step_count % (STEPMAX / 10) == 0)
+
+      /* begin debugging junk */
+      if (fabs (get_rate_sum () - rate_sum) > 1e-6 )
+        {
+          printf ("rate_sum - real rate_sum = %g\n",
+                  rate_sum - get_rate_sum());
+
+        }
+      int Scount, Icount, Scount2, Icount2;
+      Scount = Icount = Scount2 = Icount2 = 0;
+      for (int i = 0; node_states[i] != 0; i++)
+        {
+          if (node_states[i] == 's') Scount++;
+          else if (node_states[i] ==  'i' ) Icount++;
+        }
+//      printf ("S = %d  I = %d\n", Scount, Icount);
+//      end debugging junk
+//
+//      if (step_count % (STEPMAX / 100) == 0)
 	{
-	  printf ("%g ", time);
+//	  printf ("%g ", time);
 	  for (size_t i = 0; i <= max_deg; i++)
 	    {
-	      printf ("%d %d  ", S_k[i], I_k[i]);
+//	      printf ("%d %d  ", S_k[i], I_k[i]);
+              Scount2+= S_k[i];
+              Icount2+= I_k[i];
 
 	    }
-	  printf ("\n");
+          if (Scount != Scount2 || Icount != Icount2 )
+            {
+              printf("Sc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2, Icount, Icount2);
+	      printf ("\n");
+            }
 
 	}
       if (step_count > STEPMAX)
@@ -609,6 +634,7 @@ main (int argc, char *argv[])
 	{
 	case EDGE_ADD:
 	  {
+
 /* Perform the event with pointer ev. 
  * Then get next edge addition or deletion event ev1 and add to table. 
  * Remove ev1 from table last to avoid table emptying and needing to
@@ -855,7 +881,6 @@ main (int argc, char *argv[])
 	  break;
 	case EDGE_DEL:
 	  {
-
 	    i_deg = ev->i_deg;
 	    j_deg = ev->j_deg;
 
@@ -1611,7 +1636,7 @@ recover (int recoverer_id)
   delete_event_by_key (RECOVER, recoverer_id, 0);
   rate_sum -= recov_rate;
 
-  /* TODO remove event of recoverer infecting neighbors */
+  /* remove event of recoverer infecting neighbors */
   
   vector < Node *>neighbors = nodes[recoverer_id] ->get_neighbors ();
   for (int i = 0; i < neighbors.size(); i++)
@@ -1635,4 +1660,18 @@ recover (int recoverer_id)
         }
     }
   return 0;
+}
+
+
+double
+get_rate_sum ()
+{
+    struct event *ev;
+    double rate_sum_check = 0;
+
+    for (ev = event_table; ev != NULL; ev = (struct event *) ev->hh.next)
+      {
+        rate_sum_check += ev->rate;
+      }
+    return rate_sum_check;
 }
