@@ -9,6 +9,111 @@
 #include "uthash.h"		/* hash table macros */
 #include <stddef.h>		/* offset of */
 
+/* headers for argument parsing */
+#include <stdlib.h>
+#include <error.h>
+#include <argp.h>
+
+/** more stuff for argument parsing **/
+
+const char *argp_program_version = "dynet 0.2";
+const char *argp_program_bug_address = "<ebo@mail.utexas.edu>";
+
+static char doc[] = "DyNet -- simulator for disease spreading\
+ on dynamic networks\
+\vThe simulator allows the network to relax from an initial\
+ degree distribuion toward a target degree distribution. The\
+ condition that degree correlations are close to zero is used\
+ to determine the types of edges that are added and deleted.\
+ No further documentation is available yet.";
+
+/* A description of the arguments we accept. */
+static char args_doc[] = " ";
+
+/* Keys for options without short-options */
+#define OPT_ABORT 1
+
+/* The options we understand. */
+static struct argp_option options[] = {
+      {0, 0, 0, 0, "General Options" },
+      {"verbose", 'v', 0, 0, "Produce verbose output" },
+      {"quiet", 'q', 0, 0, "Don't produce any outpu" },
+      {"silent", 's', 0, OPTION_ALIAS},
+      {"output", 'o', "FILE", 0, 
+        "Output to FILE instead of standard output" },
+      {0, 0, 0, 0, "Disease Model Options" },
+      {"trans_rate", 't', "RATE", 0, 
+        "Disease moves at rate RATE (default 2) across an edge"},
+      {"recov_rate", 'r', "RATE", 0, 
+        "Infected nodes reacover at rate RATE (default 1)"},
+      {0}
+};
+
+/* maximum rate allowed in arguments */
+#define MAX_RATE 10000.
+
+/* Used by `main' to communicate with `parse_opt'. */
+struct arguments
+{
+  int silent, verbose; /* `-s', `-v' */
+  char *output_file;   /* FILE arg to `--output' */
+  double trans_rate;   /* RATE arg to `--trans_rate' */
+  double recov_rate;   /* RATE arg to `--recov_rate' */
+};
+
+/* Parse a single option. */
+static error_t
+parse_opt (int key, char *arg, struct argp_state *state)
+{
+ /* Get the INPUT argument from `argp_parse', which we
+    know is a pointer to our arguments structure. */
+ struct arguments *arguments = (struct arguments *) state->input;
+
+ switch (key)
+   {
+   case 'q': case 's':
+     arguments->silent = 1;
+     break;
+   case 'v':
+     arguments->verbose = 1;
+     break;
+   case 'o':
+     arguments->output_file = arg;
+     break;
+   case 't':
+     /* TODO check that this is a same value */
+     arguments->trans_rate = arg ? strtod (arg, NULL) : 2;
+     if (arguments->trans_rate < 0 || arguments->trans_rate > MAX_RATE )
+       {
+         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+                        "trans_rate=%g, should be in [0, %g]",
+                        arguments->trans_rate, MAX_RATE);
+
+       }
+     break;
+   case 'r':
+     arguments->recov_rate = arg ? strtod (arg, NULL) : 1;
+     if (arguments->recov_rate < 0 || arguments->recov_rate > MAX_RATE )
+       {
+         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+                        "recov_rate=%g, should be in [0, %g]",
+                        arguments->recov_rate, MAX_RATE);
+
+       }
+     break;
+   case ARGP_KEY_ARG:
+       /* Too many arguments. */
+       argp_usage (state);
+     break;
+   default:
+     return ARGP_ERR_UNKNOWN;
+   }
+ return 0;
+}
+
+/* Our argp parser. */
+static struct argp argp = { options, parse_opt, args_doc, doc };
+
 /*structure for events in simulation */
 
 #define MUTATE (char) 'm'
@@ -61,7 +166,7 @@ int *S_k;
 int *I_k;
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 50000
+#define STEPMAX 5000
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.05
@@ -168,7 +273,14 @@ main (int argc, char *argv[])
   /* array holding IDS of initially infected hosts */
   int *I_k_initial_IDs;
 
-
+  struct arguments arguments;
+  
+/* Default values for variable set by arguments */
+  arguments.silent = 0;
+  arguments.verbose = 0;
+  arguments.output_file = (char *) "stdout";
+  arguments.trans_rate = 2;
+  arguments.recov_rate = 1;
 
   struct event *ev, *ev1, ev2;
   unsigned z;
@@ -195,6 +307,15 @@ main (int argc, char *argv[])
   recov_rate = 1;
   rate_sum = 0;
 
+argp_parse (&argp, argc, argv, 0, 0, &arguments);
+
+printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
+     "VERBOSE = %s\nSILENT = %s\n",
+     arguments.trans_rate, 
+     arguments.recov_rate,
+     arguments.output_file,
+     arguments.verbose ? "yes" : "no",
+     arguments.silent ? "yes" : "no");
 
   keylen =
     offsetof (struct event, alter_id) + sizeof (int) - offsetof (struct event,
@@ -564,11 +685,11 @@ main (int argc, char *argv[])
     {
       step_count++;
 
-      /* begin debugging junk */
+#ifdef DYNET_DEBUG
       if (fabs (get_rate_sum () - rate_sum) > 1e-6 )
         {
-          printf ("rate_sum - real rate_sum = %g\n",
-                  rate_sum - get_rate_sum());
+          fprintf (stderr, "Debug: %s: %d: rate_sum - get_rate_sum ()= %g\n",
+                   __FILE__, __LINE__, rate_sum - get_rate_sum());
 
         }
       int Scount, Icount, Scount2, Icount2;
@@ -578,26 +699,22 @@ main (int argc, char *argv[])
           if (node_states[i] == 's') Scount++;
           else if (node_states[i] ==  'i' ) Icount++;
         }
-//      printf ("S = %d  I = %d\n", Scount, Icount);
-//      end debugging junk
-//
-//      if (step_count % (STEPMAX / 100) == 0)
-	{
-//	  printf ("%g ", time);
 	  for (size_t i = 0; i <= max_deg; i++)
 	    {
-//	      printf ("%d %d  ", S_k[i], I_k[i]);
               Scount2+= S_k[i];
               Icount2+= I_k[i];
 
 	    }
           if (Scount != Scount2 || Icount != Icount2 )
             {
-              printf("Sc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2, Icount, Icount2);
-	      printf ("\n");
+              fprintf(stderr, "Debug: %s: %d: counts don't match\n",
+                      __FILE__, __LINE__);
+              fprintf (stderr, "\tSc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2, Icount, Icount2);
             }
 
 	}
+#endif
+
       if (step_count > STEPMAX)
 	{
 	  fprintf (stderr, "Warning: %s: %d: reached STEPMAX, breaking\n",
