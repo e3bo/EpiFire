@@ -55,6 +55,8 @@ static struct argp_option options[] = {
   {"epsilon", 'e', "FRACTION", 0, "Initial fraction FRACTION "
    "(default 0.1) of edges from suscetible nodes pointing "
    "to infected nodes"},
+  {"finish_time", 'f', "LENGTH", 0, "Simulation time will start "
+   "at zero and run LENGTH (default 5) time units"},
   {0}
 };
 
@@ -70,6 +72,7 @@ struct arguments
   double recov_rate;		/* RATE arg to `--recov_rate' */
   double interval;		/* LENGTH arg to `--interval' */
   double epsilon;		/* FRACTION arg to `--epsilon' */
+  double finish_time;		/* LENGTH arg to `--finish_time' */
 };
 
 /* Parse a single option. */
@@ -129,6 +132,16 @@ parse_opt (int key, char *arg, struct argp_state *state)
 	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
 			 "epsilon=%g, should be in [0, 1]",
 			 arguments->epsilon);
+
+	}
+      break;
+    case 'f':
+      arguments->finish_time = strtod (arg, NULL);
+      if (arguments->finish_time < 0 || arguments->finish_time > 100)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "finish_time=%g, should be in [0, 100]",
+			 arguments->finish_time);
 
 	}
       break;
@@ -197,7 +210,7 @@ int *S_k;
 int *I_k;
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 15000
+#define STEPMAX 50000
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.05
@@ -230,6 +243,8 @@ void delete_all_events ();
 void delete_event (struct event *ev);
 void delete_event_by_key (char event_code, int ego_id, int alter_id);
 void print_rates (struct event *event_table);
+int check_event_by_key (char event_code, int ego_id, int alter_id);
+int check_infector_events (int infector_id);
 double get_rate_sum ();
 
 /** functions **/
@@ -267,6 +282,38 @@ delete_event (struct event *ev)
   free (ev);
 }
 
+int
+check_event_by_key (char event_code, int ego_id, int alter_id)
+{
+
+  struct event *ev1, ev2;
+
+  memset (&ev2, 0, sizeof (struct event));
+  ev2.event_code = event_code;
+  ev2.ego_id = ego_id;
+  ev2.alter_id = alter_id;
+  HASH_FIND (hh, event_table, &ev2.event_code, keylen, ev1);
+  if (!ev1)
+    {
+      error_at_line (0, errno, __FILE__, __LINE__,
+		     "failed to find hash with key %c_%d_%d",
+		     event_code, ego_id, alter_id);
+    }
+  else if (event_code == INFECT && ev1->rate != trans_rate)
+    {
+      error_at_line (0, 0, __FILE__, __LINE__,
+		     "infection event with rate %g, should be %g",
+		     ev1->rate, trans_rate);
+    }
+  else if (event_code == RECOVER && ev1->rate != recov_rate)
+    {
+      error_at_line (0, 0, __FILE__, __LINE__,
+		     "recovery event with rate %g, should be %g",
+		     ev1->rate, recov_rate);
+    }
+  return 0;
+}
+
 void
 delete_event_by_key (char event_code, int ego_id, int alter_id)
 {
@@ -280,7 +327,7 @@ delete_event_by_key (char event_code, int ego_id, int alter_id)
   HASH_FIND (hh, event_table, &ev2.event_code, keylen, ev1);
   if (!ev1)
     {
-      fprintf (stderr, "Error: %s: %d: Failed to find hash key \n",
+      fprintf (stderr, "error: %s: %d: failed to find hash key \n",
 	       __FILE__, __LINE__);
       exit (1);
     }
@@ -314,6 +361,7 @@ main (int argc, char *argv[])
   arguments.recov_rate = 1;
   arguments.interval = 0.05;
   arguments.epsilon = 0.1;
+  arguments.finish_time = 5;
 
   struct event *ev, *ev1, ev2;
   unsigned z;
@@ -342,15 +390,19 @@ main (int argc, char *argv[])
 
   argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
-  printf ("trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
-	  "epsilon = %g\nOUTPUT_FILE = %s\n"
-	  "VERBOSE = %s\nSILENT = %s\n",
-	  arguments.trans_rate,
-	  arguments.recov_rate,
-	  arguments.interval,
-	  arguments.epsilon,
-	  arguments.output_file,
-	  arguments.verbose ? "yes" : "no", arguments.silent ? "yes" : "no");
+  fprintf (stdout, "trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
+	   "epsilon = %g\nfinish_time = %g\nOUTPUT_FILE = %s\n"
+	   "VERBOSE = %s\nSILENT = %s\n",
+	   arguments.trans_rate,
+	   arguments.recov_rate,
+	   arguments.interval,
+	   arguments.epsilon,
+	   arguments.finish_time,
+	   arguments.output_file,
+	   arguments.verbose ? "yes" : "no", arguments.silent ? "yes" : "no");
+#ifdef    DYNET_DEBUG
+  fprintf (stdout, "dynet debugging level = %d\n", DYNET_DEBUG);
+#endif
 
   trans_rate = arguments.trans_rate;
   recov_rate = arguments.recov_rate;
@@ -683,17 +735,24 @@ main (int argc, char *argv[])
   int step_count = 0;
   double rand;
   double cum_density;
-  while (time < 5)
+  while (time < arguments.finish_time)
     {
       step_count++;
 
-#ifdef DYNET_DEBUG
+#if DYNET_DEBUG > 0
+      /* check that rate sum is being updated correctly */
+
       if (fabs (get_rate_sum () - rate_sum) > 1e-6)
 	{
-	  fprintf (stderr, "Debug: %s: %d: rate_sum - get_rate_sum ()= %g\n",
-		   __FILE__, __LINE__, rate_sum - get_rate_sum ());
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "rate_sum - get_rate_sum ()= %g\n",
+			 rate_sum - get_rate_sum ());
 
 	}
+
+      /* check that counts of susceptibles and infecteds are 
+       * correct when summed over all degree classes */
+
       int Scount, Icount, Scount2, Icount2;
       Scount = Icount = Scount2 = Icount2 = 0;
       for (int i = 0; node_states[i] != 0; i++)
@@ -715,8 +774,166 @@ main (int argc, char *argv[])
 	  fprintf (stderr, "\tSc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2,
 		   Icount, Icount2);
 	}
-#endif
 
+      /* Check that counts of Susceptiable and infecteds by degree
+       * class are being updated correctly. */
+
+      int deg, *I_k_check, *S_k_check;
+      I_k_check = (int *) calloc ((max_deg + 1), sizeof (int));
+      if (!I_k_check)
+	{
+	  error_at_line (EXIT_FAILURE, errno, __FILE__, __LINE__,
+			 "I_k_check");
+	}
+      S_k_check = (int *) calloc ((max_deg + 1), sizeof (int));
+      if (!S_k_check)
+	{
+	  error_at_line (EXIT_FAILURE, errno, __FILE__, __LINE__,
+			 "S_k_check");
+	}
+      vector < Node * >nodes = net.get_nodes ();
+      for (int i = 0; i < nodes.size (); i++)
+	{
+	  if (node_states[i] == 's')
+	    {
+	      deg = nodes[i]->deg ();
+	      S_k_check[deg]++;
+	    }
+	  if (node_states[i] == 'i')
+	    {
+	      deg = nodes[i]->deg ();
+	      I_k_check[deg]++;
+	    }
+	}
+      error_message_count = 0;
+      for (int i = 0; i <= max_deg; i++)
+	{
+	  if (S_k_check[i] != S_k[i])
+	    {
+	      error_at_line (0, 0, __FILE__, __LINE__,
+			     "S_k[%d] = %d, should be %d",
+			     i, S_k[i], S_k_check[i]);
+	    }
+	  if (I_k_check[i] != I_k[i])
+	    {
+	      error_at_line (0, 0, __FILE__, __LINE__,
+			     "I_k[%d] = %d, should be %d",
+			     i, I_k[i], I_k_check[i]);
+	    }
+	}
+      if (error_message_count != 0)
+	{
+	  error (EXIT_FAILURE, 0, "%u errors found", error_message_count);
+	}
+      free (I_k_check);
+      free (S_k_check);
+#endif
+#if DYNET_DEBUG > 1
+
+      /* Check for all events in the hash table, making sure the 
+       * hash table is consistent with the current state of the network. */
+      error_message_count = 0;
+      int infector_id;
+      int event_count = 0;
+
+      /*first check for and count one edge addition or deletion event that 
+       * can always happen */
+
+      memset (&ev2, 0, sizeof (struct event));
+      ev2.event_code = EDGE_ADD;
+      HASH_FIND (hh, event_table, &ev2.event_code, keylen, ev1);
+      if (ev1)
+	{
+	  event_count++;
+	}
+      else
+	{
+	  ev2.event_code = EDGE_DEL;
+	  HASH_FIND (hh, event_table, &ev2.event_code, keylen, ev1);
+	  if (ev1)
+	    {
+	      event_count++;
+	    }
+	}
+
+      for (int i = 0; i < nodes.size (); i++)
+	{
+	  if (node_states[i] == 'i')
+	    {
+	      infector_id = nodes[i]->get_id ();
+	      event_count += check_infector_events (infector_id);
+	    }
+	}
+      int hash_count = HASH_COUNT (event_table);
+      if (error_message_count != 0 )
+        {
+	  error (EXIT_FAILURE, 0, "%u events are missing in hash table "
+		 "or are present but occuring at the wrong rate",
+		 error_message_count);
+	}
+      if ( hash_count != event_count)
+        {
+	  error (EXIT_FAILURE, 0, "%d extra events in hash table\n",
+                 hash_count - event_count);
+	}
+
+#endif
+#if DYNET_DEBUG_TEST == 1
+      if (step_count == 10)
+	{
+	  /* set the rate of the first event in the table to 0 */
+	  fprintf (stderr,
+		   "Changing the rate of an event to test debugging tests\n");
+	  event_table->rate = 0;
+	}
+#endif
+#if DYNET_DEBUG_TEST == 2
+      if (step_count == 70)
+	{
+	  /* add an extra event to the table */
+	  fprintf (stderr, "Adding an event to test debugging tests\n");
+	  ev1 = (struct event *) malloc (sizeof (struct event));
+	  if (!ev1)
+	    {
+	      fprintf (stderr,
+		       "Error: %s: %d: malloc failed\n", __FILE__, __LINE__);
+	      return (1);
+	    }
+	  memset (ev1, 0, sizeof (struct event));
+	  ev1->event_code = EDGE_ADD;
+	  ev1->rate = 0;
+	  HASH_ADD (hh, event_table, event_code, keylen, ev1);
+	}
+#endif
+#if DYNET_DEBUG_TEST == 3
+      if (step_count == 50)
+	{
+	  /* remove an event at beginning of the table */
+	  fprintf (stderr, "Removing an event to test debugging tests\n");
+	  delete_event (event_table);
+	}
+#endif
+#if DYNET_DEBUG_TEST == 4
+      if (step_count == 50)
+	{
+	  /* give two events rates with compensating erros */
+	  fprintf (stderr, "Swapping event rates to test debugging tests\n");
+	  ev = event_table;
+	  ev->rate += 0.001;
+	  ev = (struct event *) ev->hh.next;
+	  ev->rate -= 0.001;
+	}
+#endif
+#if DYNET_DEBUG_TEST == 5
+      if (step_count == 50)
+	{
+	  /* change event code  */
+	  fprintf (stderr,
+		   "Changing event code of an event to test debugging tests\n");
+	  ev = event_table;
+	  ev->event_code = 'Z';
+	}
+#endif
 
       if (step_count > STEPMAX)
 	{
@@ -958,6 +1175,32 @@ main (int argc, char *argv[])
 		I_k[added_edge_end_previous_degree]--;
 		I_k[added_edge_end_previous_degree + 1]++;
 		break;
+	      case 's' + 'r':
+		if (node_states[added_edge_start_id] == 's')
+		  {
+		    S_k[added_edge_start_previous_degree]--;
+		    S_k[added_edge_start_previous_degree + 1]++;
+
+		  }
+		else
+		  {
+		    S_k[added_edge_end_previous_degree]--;
+		    S_k[added_edge_end_previous_degree + 1]++;
+		  }
+		break;
+	      case 'i' + 'r':
+		if (node_states[added_edge_start_id] == 'i')
+		  {
+		    I_k[added_edge_start_previous_degree]--;
+		    I_k[added_edge_start_previous_degree + 1]++;
+
+		  }
+		else
+		  {
+		    I_k[added_edge_end_previous_degree]--;
+		    I_k[added_edge_end_previous_degree + 1]++;
+		  }
+		break;
 	      case 's' + 'i':
 		if (node_states[added_edge_start_id] == 's')
 		  {
@@ -1192,6 +1435,30 @@ main (int argc, char *argv[])
 		I_k[deleted_edge_end_previous_degree]--;
 		I_k[deleted_edge_end_previous_degree - 1]++;
 		break;
+	      case 's' + 'r':
+		if (node_states[deleted_edge_start_id] == 's')
+		  {
+		    S_k[deleted_edge_start_previous_degree]--;
+		    S_k[deleted_edge_start_previous_degree - 1]++;
+		  }
+		else
+		  {
+		    S_k[deleted_edge_end_previous_degree]--;
+		    S_k[deleted_edge_end_previous_degree - 1]++;
+		  }
+		break;
+	      case 'i' + 'r':
+		if (node_states[deleted_edge_start_id] == 'i')
+		  {
+		    I_k[deleted_edge_start_previous_degree]--;
+		    I_k[deleted_edge_start_previous_degree - 1]++;
+		  }
+		else
+		  {
+		    I_k[deleted_edge_end_previous_degree]--;
+		    I_k[deleted_edge_end_previous_degree - 1]++;
+		  }
+		break;
 	      case 's' + 'i':
 		if (node_states[deleted_edge_start_id] == 's')
 		  {
@@ -1214,7 +1481,6 @@ main (int argc, char *argv[])
 					 deleted_edge_start_id,
 					 deleted_edge_end_id);
 		    rate_sum -= trans_rate;
-
 		  }
 		break;
 	      }
@@ -1754,6 +2020,46 @@ infect (int infector_id, int infectee_id)
     }
   return 0;
 }
+
+int
+check_infector_events (int infector_id)
+{
+
+  int neighbor_id, event_count = 0;
+  struct event *ev1;
+
+  /* check for recovery event */
+
+  check_event_by_key (RECOVER, infector_id, 0);
+  event_count++;
+
+  /* check for event of infector infecting neighbors */
+
+  vector < Node * >nodes = net.get_nodes ();
+  vector < Node * >neighbors = nodes[infector_id]->get_neighbors ();
+  for (int i = 0; i < neighbors.size (); i++)
+    {
+      neighbor_id = neighbors[i]->get_id ();
+      switch (node_states[neighbor_id])
+	{
+	case 's':
+	  check_event_by_key (INFECT, infector_id, neighbor_id);
+	  event_count++;
+	  break;
+	case 'i':
+	  break;
+	case 'r':
+	  break;
+	default:
+	  fprintf (stderr,
+		   "Error: %s: %d: invalid state for node\n",
+		   __FILE__, __LINE__);
+	  exit (1);
+	}
+    }
+  return event_count;
+}
+
 
 int
 recover (int recoverer_id)
