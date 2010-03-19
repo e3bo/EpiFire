@@ -38,24 +38,24 @@ static char args_doc[] = " ";
 
 /* The options we understand. */
 static struct argp_option options[] = {
-      {0, 0, 0, 0, "General Options" },
-      {"verbose", 'v', 0, 0, "Produce verbose output" },
-      {"quiet", 'q', 0, 0, "Don't produce any outpu" },
-      {"silent", 's', 0, OPTION_ALIAS},
-      {"output", 'o', "FILE", 0, 
-        "Output to FILE instead of standard output" },
-      {0, 0, 0, 0, "Disease Model Options" },
-      {"trans_rate", 't', "RATE", 0, 
-        "Disease moves at rate RATE (default 2) across an edge"},
-      {"recov_rate", 'r', "RATE", 0, 
-        "Infected nodes reacover at rate RATE (default 1)"},
-      {"interval", 'i', "LENGTH", 0, 
-        "State variables are printed to output at every LENGTH\
+  {0, 0, 0, 0, "General Options"},
+  {"verbose", 'v', 0, 0, "Produce verbose output"},
+  {"quiet", 'q', 0, 0, "Don't produce any outpu"},
+  {"silent", 's', 0, OPTION_ALIAS},
+  {"output", 'o', "FILE", 0,
+   "Output to FILE instead of standard output"},
+  {0, 0, 0, 0, "Disease Model Options"},
+  {"trans_rate", 't', "RATE", 0,
+   "Disease moves at rate RATE (default 2) across an edge"},
+  {"recov_rate", 'r', "RATE", 0,
+   "Infected nodes reacover at rate RATE (default 1)"},
+  {"interval", 'i', "LENGTH", 0,
+   "State variables are printed to output at every LENGTH\
  (default 0.05) time units"},
-      {"epsilon", 'e', "FRACTION", 0, "Initial fraction FRACTION "
-        "(default 0.1) of edges from suscetible nodes pointing "
-          "to infected nodes"},
-      {0}
+  {"epsilon", 'e', "FRACTION", 0, "Initial fraction FRACTION "
+   "(default 0.1) of edges from suscetible nodes pointing "
+   "to infected nodes"},
+  {0}
 };
 
 /* maximum rate allowed in arguments */
@@ -64,81 +64,82 @@ static struct argp_option options[] = {
 /* Used by `main' to communicate with `parse_opt'. */
 struct arguments
 {
-  int silent, verbose; /* `-s', `-v' */
-  char *output_file;   /* FILE arg to `--output' */
-  double trans_rate;   /* RATE arg to `--trans_rate' */
-  double recov_rate;   /* RATE arg to `--recov_rate' */
-  double interval;     /* LENGTH arg to `--interval' */
-  double epsilon;      /* FRACTION arg to `--epsilon' */
+  int silent, verbose;		/* `-s', `-v' */
+  char *output_file;		/* FILE arg to `--output' */
+  double trans_rate;		/* RATE arg to `--trans_rate' */
+  double recov_rate;		/* RATE arg to `--recov_rate' */
+  double interval;		/* LENGTH arg to `--interval' */
+  double epsilon;		/* FRACTION arg to `--epsilon' */
 };
 
 /* Parse a single option. */
 static error_t
 parse_opt (int key, char *arg, struct argp_state *state)
 {
- /* Get the INPUT argument from `argp_parse', which we
-    know is a pointer to our arguments structure. */
- struct arguments *arguments = (struct arguments *) state->input;
+  /* Get the INPUT argument from `argp_parse', which we
+     know is a pointer to our arguments structure. */
+  struct arguments *arguments = (struct arguments *) state->input;
 
- switch (key)
-   {
-   case 'q': case 's':
-     arguments->silent = 1;
-     break;
-   case 'v':
-     arguments->verbose = 1;
-     break;
-   case 'o':
-     arguments->output_file = arg;
-     break;
-   case 't':
-     arguments->trans_rate = strtod (arg, NULL);
-     if (arguments->trans_rate < 0 || arguments->trans_rate > MAX_RATE )
-       {
-         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
-                        "trans_rate=%g, should be in [0, %g]",
-                        arguments->trans_rate, MAX_RATE);
+  switch (key)
+    {
+    case 'q':
+    case 's':
+      arguments->silent = 1;
+      break;
+    case 'v':
+      arguments->verbose = 1;
+      break;
+    case 'o':
+      arguments->output_file = arg;
+      break;
+    case 't':
+      arguments->trans_rate = strtod (arg, NULL);
+      if (arguments->trans_rate < 0 || arguments->trans_rate > MAX_RATE)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "trans_rate=%g, should be in [0, %g]",
+			 arguments->trans_rate, MAX_RATE);
 
-       }
-     break;
-   case 'r':
-     arguments->recov_rate = strtod (arg, NULL);
-     if (arguments->recov_rate < 0 || arguments->recov_rate > MAX_RATE )
-       {
-         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
-                        "recov_rate=%g, should be in [0, %g]",
-                        arguments->recov_rate, MAX_RATE);
+	}
+      break;
+    case 'r':
+      arguments->recov_rate = strtod (arg, NULL);
+      if (arguments->recov_rate < 0 || arguments->recov_rate > MAX_RATE)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "recov_rate=%g, should be in [0, %g]",
+			 arguments->recov_rate, MAX_RATE);
 
-       }
-     break;
-   case 'i':
-     arguments->interval = strtod (arg, NULL);
-     if (arguments->interval <= 0 || arguments->interval > 1e2 )
-       {
-         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
-                        "interval=%g, should be in [0, %g]",
-                        arguments->recov_rate, 1e2);
+	}
+      break;
+    case 'i':
+      arguments->interval = strtod (arg, NULL);
+      if (arguments->interval <= 0 || arguments->interval > 1e2)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "interval=%g, should be in [0, %g]",
+			 arguments->recov_rate, 1e2);
 
-       }
-     break;
-   case 'e':
-     arguments->epsilon = strtod (arg, NULL);
-     if (arguments->epsilon < 0 || arguments->epsilon > 1 )
-       {
-         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
-                        "epsilon=%g, should be in [0, 1]",
-                        arguments->epsilon);
+	}
+      break;
+    case 'e':
+      arguments->epsilon = strtod (arg, NULL);
+      if (arguments->epsilon < 0 || arguments->epsilon > 1)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "epsilon=%g, should be in [0, 1]",
+			 arguments->epsilon);
 
-       }
-     break;
-   case ARGP_KEY_ARG:
-       /* Too many arguments. */
-       argp_usage (state);
-     break;
-   default:
-     return ARGP_ERR_UNKNOWN;
-   }
- return 0;
+	}
+      break;
+    case ARGP_KEY_ARG:
+      /* Too many arguments. */
+      argp_usage (state);
+      break;
+    default:
+      return ARGP_ERR_UNKNOWN;
+    }
+  return 0;
 }
 
 /* Our argp parser. */
@@ -304,7 +305,7 @@ main (int argc, char *argv[])
   int *I_k_initial_IDs;
 
   struct arguments arguments;
-  
+
 /* Default values for variable set by arguments */
   arguments.silent = 0;
   arguments.verbose = 0;
@@ -339,22 +340,21 @@ main (int argc, char *argv[])
   recov_rate = 1;
   rate_sum = 0;
 
-argp_parse (&argp, argc, argv, 0, 0, &arguments);
+  argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
-printf ("trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
-        "epsilon = %g\nOUTPUT_FILE = %s\n"
-     "VERBOSE = %s\nSILENT = %s\n",
-     arguments.trans_rate, 
-     arguments.recov_rate,
-     arguments.interval,
-     arguments.epsilon,
-     arguments.output_file,
-     arguments.verbose ? "yes" : "no",
-     arguments.silent ? "yes" : "no");
+  printf ("trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
+	  "epsilon = %g\nOUTPUT_FILE = %s\n"
+	  "VERBOSE = %s\nSILENT = %s\n",
+	  arguments.trans_rate,
+	  arguments.recov_rate,
+	  arguments.interval,
+	  arguments.epsilon,
+	  arguments.output_file,
+	  arguments.verbose ? "yes" : "no", arguments.silent ? "yes" : "no");
 
-trans_rate = arguments.trans_rate;
-recov_rate = arguments.recov_rate;
-epsilon = arguments.epsilon;
+  trans_rate = arguments.trans_rate;
+  recov_rate = arguments.recov_rate;
+  epsilon = arguments.epsilon;
 
   keylen =
     offsetof (struct event, alter_id) + sizeof (int) - offsetof (struct event,
@@ -370,7 +370,7 @@ epsilon = arguments.epsilon;
   double lambda = 2;
   int min = 0;			// min degree
   int max = N;			// max degree
-  
+
   // generate the normalize vector of probabilities
   vector < double >dist;
   double deg_array[] = { 0, 1, 1, 1, 1 };
@@ -440,11 +440,11 @@ epsilon = arguments.epsilon;
   if (0)
     {
       if ((fp = fopen ("edgechanges.out", "w")) == NULL)
-        {
-          fprintf (stderr, "Error: %s: %d: Failed to open file \n",
-                   __FILE__, __LINE__);
-          return (-1);
-        }
+	{
+	  fprintf (stderr, "Error: %s: %d: Failed to open file \n",
+		   __FILE__, __LINE__);
+	  return (-1);
+	}
       fprintf (fp, "time add_or_del start_node_id end_node_id\n");
     }
   if (arguments.output_file == "-")
@@ -455,17 +455,17 @@ epsilon = arguments.epsilon;
     {
       of = fopen (arguments.output_file, "w");
       if (of == NULL)
-        {
-          error_at_line (EXIT_FAILURE, errno, __FILE__, __LINE__,
-                         "Failed to open file %s", arguments.output_file);
-        }
+	{
+	  error_at_line (EXIT_FAILURE, errno, __FILE__, __LINE__,
+			 "Failed to open file %s", arguments.output_file);
+	}
     }
   fprintf (of, "time\t");
   for (size_t z = 0; z <= max_deg; z++)
     {
       fprintf (of, "p_%u S_%u I_%u\t", z, z, z);
     }
-   fprintf (of, "\n");
+  fprintf (of, "\n");
 
   /* rate of approach of degree dist to pf */
   double v = 4e-1;
@@ -688,30 +688,33 @@ epsilon = arguments.epsilon;
       step_count++;
 
 #ifdef DYNET_DEBUG
-      if (fabs (get_rate_sum () - rate_sum) > 1e-6 )
-        {
-          fprintf (stderr, "Debug: %s: %d: rate_sum - get_rate_sum ()= %g\n",
-                   __FILE__, __LINE__, rate_sum - get_rate_sum());
+      if (fabs (get_rate_sum () - rate_sum) > 1e-6)
+	{
+	  fprintf (stderr, "Debug: %s: %d: rate_sum - get_rate_sum ()= %g\n",
+		   __FILE__, __LINE__, rate_sum - get_rate_sum ());
 
-        }
+	}
       int Scount, Icount, Scount2, Icount2;
       Scount = Icount = Scount2 = Icount2 = 0;
       for (int i = 0; node_states[i] != 0; i++)
-        {
-          if (node_states[i] == 's') Scount++;
-          else if (node_states[i] ==  'i' ) Icount++;
-        }
+	{
+	  if (node_states[i] == 's')
+	    Scount++;
+	  else if (node_states[i] == 'i')
+	    Icount++;
+	}
       for (size_t i = 0; i <= max_deg; i++)
-        {
-          Scount2+= S_k[i];
-          Icount2+= I_k[i];
-        }
-      if (Scount != Scount2 || Icount != Icount2 )
-        {
-          fprintf(stderr, "Debug: %s: %d: counts don't match\n",
-                  __FILE__, __LINE__);
-          fprintf (stderr, "\tSc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2, Icount, Icount2);
-        }
+	{
+	  Scount2 += S_k[i];
+	  Icount2 += I_k[i];
+	}
+      if (Scount != Scount2 || Icount != Icount2)
+	{
+	  fprintf (stderr, "Debug: %s: %d: counts don't match\n",
+		   __FILE__, __LINE__);
+	  fprintf (stderr, "\tSc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2,
+		   Icount, Icount2);
+	}
 #endif
 
 
@@ -725,15 +728,15 @@ epsilon = arguments.epsilon;
       /* determine time of next event */
       time += gsl_ran_exponential (rng, 1 / rate_sum);
       if (time > write_point)
-        { 
-          fprintf (of, "%g\t", write_point);
-          write_point += arguments.interval;
-          for (size_t z = 0; z <= max_deg; z++)
-            {
-             fprintf (of, "%g %d %d\t", p[z], S_k[z], I_k[z]);
-            }
-          fprintf (of, "\n");
-        }
+	{
+	  fprintf (of, "%g\t", write_point);
+	  write_point += arguments.interval;
+	  for (size_t z = 0; z <= max_deg; z++)
+	    {
+	      fprintf (of, "%g %d %d\t", p[z], S_k[z], I_k[z]);
+	    }
+	  fprintf (of, "\n");
+	}
 
       /* select one event to be next proportionally to it's rate */
 
@@ -821,11 +824,14 @@ epsilon = arguments.epsilon;
 			 j_deg - 1, tmp_dist[j_deg - 1], count2);
 		return (1);
 	      }
-            do
-              {	  
-                gsl_ran_choose (rng, &node_1, 1, i_deg_less_one_nodes, count1, sizeof (int));
-                gsl_ran_choose (rng, &node_2, 1, j_deg_less_one_nodes, count2, sizeof (int));
-              } while (node_1 == node_2);
+	    do
+	      {
+		gsl_ran_choose (rng, &node_1, 1, i_deg_less_one_nodes, count1,
+				sizeof (int));
+		gsl_ran_choose (rng, &node_2, 1, j_deg_less_one_nodes, count2,
+				sizeof (int));
+	      }
+	    while (node_1 == node_2);
 
 	    added_edge_start_id = node_1;
 	    added_edge_start_previous_degree = i_deg - 1;
@@ -833,8 +839,8 @@ epsilon = arguments.epsilon;
 	    added_edge_end_previous_degree = j_deg - 1;
 
 	    nodes[node_1]->connect_to (nodes[node_2]);
-//	    fprintf (fp, "%g a %d %d\n", time, nodes[node_1]->get_id (),
-//		     nodes[node_2]->get_id ());
+//          fprintf (fp, "%g a %d %d\n", time, nodes[node_1]->get_id (),
+//                   nodes[node_2]->get_id ());
 
 	    free (i_deg_less_one_nodes);
 	    free (j_deg_less_one_nodes);
@@ -922,7 +928,7 @@ epsilon = arguments.epsilon;
 	      {
 		ev1->event_code = EDGE_ADD;
 		HASH_ADD (hh, event_table, event_code, keylen, ev1);
-	        ev1->rate = rate;
+		ev1->rate = rate;
 	      }
 	    else
 	      {
@@ -931,14 +937,14 @@ epsilon = arguments.epsilon;
 			 (c_actual, i_deg - 1, j_deg - 1));
 		ev1->event_code = EDGE_DEL;
 		HASH_ADD (hh, event_table, event_code, keylen, ev1);
-	        ev1->rate = rate;
+		ev1->rate = rate;
 	      }
 
 	    /* update system dynamic variables */
-            /* and add new possible infections to hash table */
+	    /* and add new possible infections to hash table */
 	    rate_sum -= ev->rate;
-	    switch (node_states[added_edge_start_id] 
-                    + node_states[added_edge_end_id])
+	    switch (node_states[added_edge_start_id]
+		    + node_states[added_edge_end_id])
 	      {
 	      case 's' + 's':
 		S_k[added_edge_start_previous_degree]--;
@@ -953,50 +959,50 @@ epsilon = arguments.epsilon;
 		I_k[added_edge_end_previous_degree + 1]++;
 		break;
 	      case 's' + 'i':
-                if (node_states[added_edge_start_id] == 's')
-                  {
-                    S_k[added_edge_start_previous_degree]--;
-                    S_k[added_edge_start_previous_degree + 1]++;
-                    I_k[added_edge_end_previous_degree]--;
-                    I_k[added_edge_end_previous_degree + 1]++;
-                    ev1 = (struct event *) malloc (sizeof (struct event));
-                    if (!ev1)
-                      {
-                        fprintf (stderr, 
-                                 "Error: %s: %d: malloc failed\n", 
-                                 __FILE__, __LINE__);
-                        return (1);
-                      }
-                    memset (ev1, 0, sizeof (struct event));
-                    ev1->alter_id = added_edge_start_id;
-                    ev1->ego_id = added_edge_end_id;
-                    ev1->rate = trans_rate;
-                    ev1->event_code = INFECT;
-                    HASH_ADD (hh, event_table, event_code, keylen, ev1);
-                    rate_sum += trans_rate;
-                  }
-                else
-                  {
-                    I_k[added_edge_start_previous_degree]--;
-                    I_k[added_edge_start_previous_degree + 1]++;
-                    S_k[added_edge_end_previous_degree]--;
-                    S_k[added_edge_end_previous_degree + 1]++;
-                    ev1 = (struct event *) malloc (sizeof (struct event));
-                    if (!ev1)
-                      {
-                        fprintf (stderr, 
-                                 "Error: %s: %d: malloc failed\n", 
-                                 __FILE__, __LINE__);
-                        return (1);
-                      }
-                    memset (ev1, 0, sizeof (struct event));
-                    ev1->ego_id = added_edge_start_id;
-                    ev1->alter_id = added_edge_end_id;
-                    ev1->rate = trans_rate;
-                    ev1->event_code = INFECT;
-                    HASH_ADD (hh, event_table, event_code, keylen, ev1);
-                    rate_sum += trans_rate;
-                  }
+		if (node_states[added_edge_start_id] == 's')
+		  {
+		    S_k[added_edge_start_previous_degree]--;
+		    S_k[added_edge_start_previous_degree + 1]++;
+		    I_k[added_edge_end_previous_degree]--;
+		    I_k[added_edge_end_previous_degree + 1]++;
+		    ev1 = (struct event *) malloc (sizeof (struct event));
+		    if (!ev1)
+		      {
+			fprintf (stderr,
+				 "Error: %s: %d: malloc failed\n",
+				 __FILE__, __LINE__);
+			return (1);
+		      }
+		    memset (ev1, 0, sizeof (struct event));
+		    ev1->alter_id = added_edge_start_id;
+		    ev1->ego_id = added_edge_end_id;
+		    ev1->rate = trans_rate;
+		    ev1->event_code = INFECT;
+		    HASH_ADD (hh, event_table, event_code, keylen, ev1);
+		    rate_sum += trans_rate;
+		  }
+		else
+		  {
+		    I_k[added_edge_start_previous_degree]--;
+		    I_k[added_edge_start_previous_degree + 1]++;
+		    S_k[added_edge_end_previous_degree]--;
+		    S_k[added_edge_end_previous_degree + 1]++;
+		    ev1 = (struct event *) malloc (sizeof (struct event));
+		    if (!ev1)
+		      {
+			fprintf (stderr,
+				 "Error: %s: %d: malloc failed\n",
+				 __FILE__, __LINE__);
+			return (1);
+		      }
+		    memset (ev1, 0, sizeof (struct event));
+		    ev1->ego_id = added_edge_start_id;
+		    ev1->alter_id = added_edge_end_id;
+		    ev1->rate = trans_rate;
+		    ev1->event_code = INFECT;
+		    HASH_ADD (hh, event_table, event_code, keylen, ev1);
+		    rate_sum += trans_rate;
+		  }
 		break;
 	      }
 
@@ -1069,8 +1075,8 @@ epsilon = arguments.epsilon;
 	    deleted_edge_end_id = edge->get_end ()->get_id ();
 	    deleted_edge_end_previous_degree = edge->get_end ()->deg ();
 
-//	    fprintf (fp, "%g d %d %d\n", time,
-//		     deleted_edge_start_id, deleted_edge_end_id);
+//          fprintf (fp, "%g d %d %d\n", time,
+//                   deleted_edge_start_id, deleted_edge_end_id);
 	    edge->disconnect_nodes ();
 	    free (edge_ids);
 
@@ -1172,7 +1178,7 @@ epsilon = arguments.epsilon;
 	    /* update system dynamic variables */
 	    rate_sum -= ev->rate;
 	    switch (node_states[deleted_edge_start_id]
-                    + node_states[deleted_edge_end_id])
+		    + node_states[deleted_edge_end_id])
 	      {
 	      case 's' + 's':
 		S_k[deleted_edge_start_previous_degree]--;
@@ -1186,32 +1192,32 @@ epsilon = arguments.epsilon;
 		I_k[deleted_edge_end_previous_degree]--;
 		I_k[deleted_edge_end_previous_degree - 1]++;
 		break;
-              case 's' + 'i':
-                if (node_states[deleted_edge_start_id] == 's')
-                  {
-                    S_k[deleted_edge_start_previous_degree]--;
-                    S_k[deleted_edge_start_previous_degree - 1]++;
-                    I_k[deleted_edge_end_previous_degree]--;
-                    I_k[deleted_edge_end_previous_degree - 1]++;
-                    delete_event_by_key (INFECT, 
-                                         deleted_edge_end_id,
-                                         deleted_edge_start_id);
-                    rate_sum -= trans_rate;
-                  }
-                else
-                  {
-                    I_k[deleted_edge_start_previous_degree]--;
-                    I_k[deleted_edge_start_previous_degree - 1]++;
-                    S_k[deleted_edge_end_previous_degree]--;
-                    S_k[deleted_edge_end_previous_degree - 1]++;
-                    delete_event_by_key (INFECT, 
-                                         deleted_edge_start_id,
-                                         deleted_edge_end_id);
-                    rate_sum -= trans_rate;
+	      case 's' + 'i':
+		if (node_states[deleted_edge_start_id] == 's')
+		  {
+		    S_k[deleted_edge_start_previous_degree]--;
+		    S_k[deleted_edge_start_previous_degree - 1]++;
+		    I_k[deleted_edge_end_previous_degree]--;
+		    I_k[deleted_edge_end_previous_degree - 1]++;
+		    delete_event_by_key (INFECT,
+					 deleted_edge_end_id,
+					 deleted_edge_start_id);
+		    rate_sum -= trans_rate;
+		  }
+		else
+		  {
+		    I_k[deleted_edge_start_previous_degree]--;
+		    I_k[deleted_edge_start_previous_degree - 1]++;
+		    S_k[deleted_edge_end_previous_degree]--;
+		    S_k[deleted_edge_end_previous_degree - 1]++;
+		    delete_event_by_key (INFECT,
+					 deleted_edge_start_id,
+					 deleted_edge_end_id);
+		    rate_sum -= trans_rate;
 
-                  }
-                break;
-              }
+		  }
+		break;
+	      }
 
 
 	    /* remove event ev from the table */
@@ -1221,11 +1227,11 @@ epsilon = arguments.epsilon;
 	  }
 	  break;
 	case RECOVER:
-          recover (ev->ego_id);
+	  recover (ev->ego_id);
 	  break;
-        case INFECT:
-          infect (ev->ego_id, ev->alter_id);
-          break;
+	case INFECT:
+	  infect (ev->ego_id, ev->alter_id);
+	  break;
 	default:
 	  fprintf (stderr, "Error: %s: %d: Illegal event code\n",
 		   __FILE__, __LINE__);
@@ -1242,9 +1248,9 @@ epsilon = arguments.epsilon;
   gsl_rng_free (rng);
 //  fclose (fp);
   if (of != stdout)
-{
-  fclose (of);
-}
+    {
+      fclose (of);
+    }
 
   free (node_states);
   free (S_k);
@@ -1711,39 +1717,40 @@ infect (int infector_id, int infectee_id)
    * remove events of infected host getting infeced by infectious
    * neighbors */
 
-  vector < Node *>neighbors = nodes[infectee_id] ->get_neighbors ();
-  for (int i = 0; i < neighbors.size(); i++)
+  vector < Node * >neighbors = nodes[infectee_id]->get_neighbors ();
+  for (int i = 0; i < neighbors.size (); i++)
     {
-      neighbor_id = neighbors[i] ->get_id();
+      neighbor_id = neighbors[i]->get_id ();
       switch (node_states[neighbor_id])
-        {
-        case 's':
-          ev1 = (struct event *) malloc (sizeof (struct event));
-          if (!ev1)
-            {
-              fprintf (stderr, "Error: %s: %d: malloc failed\n", __FILE__, __LINE__);
-              return (1);
-            }
-          memset (ev1, 0, sizeof (struct event));
-          ev1->ego_id = infectee_id;
-          ev1->alter_id = neighbor_id;
-          ev1->rate = trans_rate;
-          ev1->event_code = INFECT;
-          HASH_ADD (hh, event_table, event_code, keylen, ev1);
-          rate_sum += trans_rate;
-          break;
-        case 'i':
-          delete_event_by_key (INFECT, neighbor_id, infectee_id);
-          rate_sum -= trans_rate;
-          break;
-        case 'r':
-          break;
-        default:
-          fprintf (stderr,
-                   "Error: %s: %d: invalid state for node\n",
-                   __FILE__, __LINE__);
-          exit (1);
-        }
+	{
+	case 's':
+	  ev1 = (struct event *) malloc (sizeof (struct event));
+	  if (!ev1)
+	    {
+	      fprintf (stderr, "Error: %s: %d: malloc failed\n", __FILE__,
+		       __LINE__);
+	      return (1);
+	    }
+	  memset (ev1, 0, sizeof (struct event));
+	  ev1->ego_id = infectee_id;
+	  ev1->alter_id = neighbor_id;
+	  ev1->rate = trans_rate;
+	  ev1->event_code = INFECT;
+	  HASH_ADD (hh, event_table, event_code, keylen, ev1);
+	  rate_sum += trans_rate;
+	  break;
+	case 'i':
+	  delete_event_by_key (INFECT, neighbor_id, infectee_id);
+	  rate_sum -= trans_rate;
+	  break;
+	case 'r':
+	  break;
+	default:
+	  fprintf (stderr,
+		   "Error: %s: %d: invalid state for node\n",
+		   __FILE__, __LINE__);
+	  exit (1);
+	}
     }
   return 0;
 }
@@ -1768,27 +1775,27 @@ recover (int recoverer_id)
   rate_sum -= recov_rate;
 
   /* remove event of recoverer infecting neighbors */
-  
-  vector < Node *>neighbors = nodes[recoverer_id] ->get_neighbors ();
-  for (int i = 0; i < neighbors.size(); i++)
+
+  vector < Node * >neighbors = nodes[recoverer_id]->get_neighbors ();
+  for (int i = 0; i < neighbors.size (); i++)
     {
-      neighbor_id = neighbors[i] ->get_id();
+      neighbor_id = neighbors[i]->get_id ();
       switch (node_states[neighbor_id])
-        {
-        case 's':
-          delete_event_by_key (INFECT, recoverer_id, neighbor_id);
-          rate_sum -= trans_rate;
-          break;
-        case 'i':
-          break;
-        case 'r':
-          break;
-        default:
-          fprintf (stderr,
-                   "Error: %s: %d: invalid state for node\n",
-                   __FILE__, __LINE__);
-          exit (1);
-        }
+	{
+	case 's':
+	  delete_event_by_key (INFECT, recoverer_id, neighbor_id);
+	  rate_sum -= trans_rate;
+	  break;
+	case 'i':
+	  break;
+	case 'r':
+	  break;
+	default:
+	  fprintf (stderr,
+		   "Error: %s: %d: invalid state for node\n",
+		   __FILE__, __LINE__);
+	  exit (1);
+	}
     }
   return 0;
 }
@@ -1797,12 +1804,12 @@ recover (int recoverer_id)
 double
 get_rate_sum ()
 {
-    struct event *ev;
-    double rate_sum_check = 0;
+  struct event *ev;
+  double rate_sum_check = 0;
 
-    for (ev = event_table; ev != NULL; ev = (struct event *) ev->hh.next)
-      {
-        rate_sum_check += ev->rate;
-      }
-    return rate_sum_check;
+  for (ev = event_table; ev != NULL; ev = (struct event *) ev->hh.next)
+    {
+      rate_sum_check += ev->rate;
+    }
+  return rate_sum_check;
 }
