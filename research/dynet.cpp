@@ -52,6 +52,9 @@ static struct argp_option options[] = {
       {"interval", 'i', "LENGTH", 0, 
         "State variables are printed to output at every LENGTH\
  (default 0.05) time units"},
+      {"epsilon", 'e', "FRACTION", 0, "Initial fraction FRACTION "
+        "(default 0.1) of edges from suscetible nodes pointing "
+          "to infected nodes"},
       {0}
 };
 
@@ -66,6 +69,7 @@ struct arguments
   double trans_rate;   /* RATE arg to `--trans_rate' */
   double recov_rate;   /* RATE arg to `--recov_rate' */
   double interval;     /* LENGTH arg to `--interval' */
+  double epsilon;      /* FRACTION arg to `--epsilon' */
 };
 
 /* Parse a single option. */
@@ -114,6 +118,16 @@ parse_opt (int key, char *arg, struct argp_state *state)
          error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
                         "interval=%g, should be in [0, %g]",
                         arguments->recov_rate, 1e2);
+
+       }
+     break;
+   case 'e':
+     arguments->epsilon = strtod (arg, NULL);
+     if (arguments->epsilon < 0 || arguments->epsilon > 1 )
+       {
+         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+                        "epsilon=%g, should be in [0, 1]",
+                        arguments->epsilon);
 
        }
      break;
@@ -298,6 +312,7 @@ main (int argc, char *argv[])
   arguments.trans_rate = 2;
   arguments.recov_rate = 1;
   arguments.interval = 0.05;
+  arguments.epsilon = 0.1;
 
   struct event *ev, *ev1, ev2;
   unsigned z;
@@ -326,18 +341,20 @@ main (int argc, char *argv[])
 
 argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
-printf ("trans_rate = %g\nrecov_rate = %g\ninterval = %g\nOUTPUT_FILE = %s\n"
+printf ("trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
+        "epsilon = %g\nOUTPUT_FILE = %s\n"
      "VERBOSE = %s\nSILENT = %s\n",
      arguments.trans_rate, 
      arguments.recov_rate,
      arguments.interval,
+     arguments.epsilon,
      arguments.output_file,
      arguments.verbose ? "yes" : "no",
      arguments.silent ? "yes" : "no");
 
 trans_rate = arguments.trans_rate;
 recov_rate = arguments.recov_rate;
-
+epsilon = arguments.epsilon;
 
   keylen =
     offsetof (struct event, alter_id) + sizeof (int) - offsetof (struct event,
@@ -684,21 +701,19 @@ recov_rate = arguments.recov_rate;
           if (node_states[i] == 's') Scount++;
           else if (node_states[i] ==  'i' ) Icount++;
         }
-	  for (size_t i = 0; i <= max_deg; i++)
-	    {
-              Scount2+= S_k[i];
-              Icount2+= I_k[i];
-
-	    }
-          if (Scount != Scount2 || Icount != Icount2 )
-            {
-              fprintf(stderr, "Debug: %s: %d: counts don't match\n",
-                      __FILE__, __LINE__);
-              fprintf (stderr, "\tSc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2, Icount, Icount2);
-            }
-
-	}
+      for (size_t i = 0; i <= max_deg; i++)
+        {
+          Scount2+= S_k[i];
+          Icount2+= I_k[i];
+        }
+      if (Scount != Scount2 || Icount != Icount2 )
+        {
+          fprintf(stderr, "Debug: %s: %d: counts don't match\n",
+                  __FILE__, __LINE__);
+          fprintf (stderr, "\tSc=%d Sc2=%d, Ic=%d, Ic2=%d\n", Scount, Scount2, Icount, Icount2);
+        }
 #endif
+
 
       if (step_count > STEPMAX)
 	{
