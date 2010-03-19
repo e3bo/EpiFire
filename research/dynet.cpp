@@ -14,6 +14,9 @@
 #include <error.h>
 #include <argp.h>
 
+/* errno.h has declaration of errno variable */
+#include <errno.h>
+
 /** more stuff for argument parsing **/
 
 const char *argp_program_version = "dynet 0.2";
@@ -46,6 +49,9 @@ static struct argp_option options[] = {
         "Disease moves at rate RATE (default 2) across an edge"},
       {"recov_rate", 'r', "RATE", 0, 
         "Infected nodes reacover at rate RATE (default 1)"},
+      {"interval", 'i', "LENGTH", 0, 
+        "State variables are printed to output at every LENGTH\
+ (default 0.05) time units"},
       {0}
 };
 
@@ -59,6 +65,7 @@ struct arguments
   char *output_file;   /* FILE arg to `--output' */
   double trans_rate;   /* RATE arg to `--trans_rate' */
   double recov_rate;   /* RATE arg to `--recov_rate' */
+  double interval;     /* LENGTH arg to `--interval' */
 };
 
 /* Parse a single option. */
@@ -81,8 +88,7 @@ parse_opt (int key, char *arg, struct argp_state *state)
      arguments->output_file = arg;
      break;
    case 't':
-     /* TODO check that this is a same value */
-     arguments->trans_rate = arg ? strtod (arg, NULL) : 2;
+     arguments->trans_rate = strtod (arg, NULL);
      if (arguments->trans_rate < 0 || arguments->trans_rate > MAX_RATE )
        {
          error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
@@ -92,12 +98,22 @@ parse_opt (int key, char *arg, struct argp_state *state)
        }
      break;
    case 'r':
-     arguments->recov_rate = arg ? strtod (arg, NULL) : 1;
+     arguments->recov_rate = strtod (arg, NULL);
      if (arguments->recov_rate < 0 || arguments->recov_rate > MAX_RATE )
        {
          error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
                         "recov_rate=%g, should be in [0, %g]",
                         arguments->recov_rate, MAX_RATE);
+
+       }
+     break;
+   case 'i':
+     arguments->interval = strtod (arg, NULL);
+     if (arguments->interval <= 0 || arguments->interval > 1e2 )
+       {
+         error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+                        "interval=%g, should be in [0, %g]",
+                        arguments->recov_rate, 1e2);
 
        }
      break;
@@ -166,7 +182,7 @@ int *S_k;
 int *I_k;
 
 /* maximum number of stochastic sim steps */
-#define STEPMAX 5000
+#define STEPMAX 15000
 
 /*maximum degree correlations allowed */
 #define MAXREDGE 0.05
@@ -178,8 +194,6 @@ double recov_rate;
 /* OUTSIDE is the ID of any host outside of population that transmit 
  * the initial infections */
 #define OUTSIDE -99
-
-/* TODO add debug mode function to check that rate_sum is correct */
 
 /* rounding doubles to nearest integer */
 /* source http://www.cs.tut.fi/~jkorpela/round.html */
@@ -262,6 +276,8 @@ delete_event_by_key (char event_code, int ego_id, int alter_id)
 int
 main (int argc, char *argv[])
 {
+  errno = 0;
+
   /* epsilon is the initial fraction of edges pointing to suscectible
    * hosts from infected hosts */
   double epsilon = 1e-1;
@@ -278,9 +294,10 @@ main (int argc, char *argv[])
 /* Default values for variable set by arguments */
   arguments.silent = 0;
   arguments.verbose = 0;
-  arguments.output_file = (char *) "stdout";
+  arguments.output_file = (char *) "-";
   arguments.trans_rate = 2;
   arguments.recov_rate = 1;
+  arguments.interval = 0.05;
 
   struct event *ev, *ev1, ev2;
   unsigned z;
@@ -309,71 +326,22 @@ main (int argc, char *argv[])
 
 argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
-printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
+printf ("trans_rate = %g\nrecov_rate = %g\ninterval = %g\nOUTPUT_FILE = %s\n"
      "VERBOSE = %s\nSILENT = %s\n",
      arguments.trans_rate, 
      arguments.recov_rate,
+     arguments.interval,
      arguments.output_file,
      arguments.verbose ? "yes" : "no",
      arguments.silent ? "yes" : "no");
 
+trans_rate = arguments.trans_rate;
+recov_rate = arguments.recov_rate;
+
+
   keylen =
     offsetof (struct event, alter_id) + sizeof (int) - offsetof (struct event,
 								 event_code);
-
-  printf ("count before additions: %d\n", HASH_COUNT (event_table));
-  if (event_table == NULL)
-    {
-      printf (" is null");
-    }
-
-  for (z = 0; z < 10; z++)
-    {
-      ev1 = (struct event *) malloc (sizeof (struct event));
-      memset (ev1, 0, sizeof (struct event));
-      ev1->event_code = 'm';
-      ev1->ego_id = z;
-      ev1->alter_id = z * z;
-      ev1->phylo_id = 100;
-      ev1->rate = 0.1 * .3 * z;
-
-      HASH_ADD (hh, event_table, event_code, keylen, ev1);
-      printf ("count during additions: %d\n", HASH_COUNT (event_table));
-    }
-
-  /* look for one specific event */
-  memset (&ev2, 0, sizeof (struct event));
-  ev2.event_code = MUTATE;
-  ev2.ego_id = 5;
-  ev2.alter_id = 25;
-  HASH_FIND (hh, event_table, &ev2.event_code, keylen, ev1);
-  if (ev1)
-    printf ("found: node %d, phylo %d\n", ev1->ego_id, ev1->phylo_id);
-
-  print_rates (event_table);
-
-
-  printf ("count before deletion: %d\n", HASH_COUNT (event_table));
-  delete_event (ev1);
-  printf ("count after deletion: %d\n", HASH_COUNT (event_table));
-  print_rates (event_table);
-  for (z = 10; z < 20; z++)
-    {
-      ev1 = (struct event *) malloc (sizeof (struct event));
-      memset (ev1, 0, sizeof (struct event));
-      ev1->event_code = 'm';
-      ev1->ego_id = z;
-      ev1->alter_id = z * z;
-      ev1->phylo_id = 100;
-      ev1->rate = 0.1 * .3 * z;
-
-      HASH_ADD (hh, event_table, event_code, keylen, ev1);
-      printf ("count during additions: %d\n", HASH_COUNT (event_table));
-    }
-  print_rates (event_table);
-  delete_all_events ();
-  printf ("count after deletions: %d\n", HASH_COUNT (event_table));
-
   int ret = 0;
 
   // Create and populate a network
@@ -385,6 +353,7 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
   double lambda = 2;
   int min = 0;			// min degree
   int max = N;			// max degree
+  
   // generate the normalize vector of probabilities
   vector < double >dist;
   double deg_array[] = { 0, 1, 1, 1, 1 };
@@ -409,18 +378,6 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
   vector < Edge * >edges = net.get_edges ();
   int max_deg = max_element (net.get_deg_series ());
 
-
-  // prototype function to calculate relative rates
-
-  // open filestream to record additions and deletions
-  FILE *fp;
-  if ((fp = fopen ("edgechanges.out", "w")) == NULL)
-    {
-      fprintf (stderr, "Error: %s: %d: Failed to open file \n",
-	       __FILE__, __LINE__);
-      return (-1);
-    }
-  fprintf (fp, "time add_or_del start_node_id end_node_id\n");
 
   /* degree distribution */
   double *p;
@@ -459,6 +416,40 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
       return (1);
     }
 
+  // open filestreams and print headers
+  FILE *fp, *of;
+
+  /* this seems uselss now, but maybe useful for visualization later will delete later */
+  if (0)
+    {
+      if ((fp = fopen ("edgechanges.out", "w")) == NULL)
+        {
+          fprintf (stderr, "Error: %s: %d: Failed to open file \n",
+                   __FILE__, __LINE__);
+          return (-1);
+        }
+      fprintf (fp, "time add_or_del start_node_id end_node_id\n");
+    }
+  if (arguments.output_file == "-")
+    {
+      of = stdout;
+    }
+  else
+    {
+      of = fopen (arguments.output_file, "w");
+      if (of == NULL)
+        {
+          error_at_line (EXIT_FAILURE, errno, __FILE__, __LINE__,
+                         "Failed to open file %s", arguments.output_file);
+        }
+    }
+  fprintf (of, "time\t");
+  for (size_t z = 0; z <= max_deg; z++)
+    {
+      fprintf (of, "p_%u S_%u I_%u\t", z, z, z);
+    }
+   fprintf (of, "\n");
+
   /* rate of approach of degree dist to pf */
   double v = 4e-1;
 
@@ -494,7 +485,6 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
   gsl_histogram2d *c_actual;
 
   double write_point = 0;
-  double write_step = 0.05;
 
   /* calc_r is non-zero if assortativity calculation should be done */
   int calc_r = 1;
@@ -534,7 +524,6 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
   for (size_t i = 0; i <= max_deg; i++)
     {
       I_k_initial = round ((1 - pow (1 - epsilon, i)) * tmp_dist[i]);
-      printf ("I_k_initial = %d given k = %d\n", I_k_initial, i);
       count1 = 0;
       tmp_dist = net.get_deg_dist ();
       i_deg_nodes = (int *) malloc (tmp_dist[i] * sizeof (int));
@@ -577,10 +566,6 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
 	}
       free (I_k_initial_IDs);
       free (i_deg_nodes);
-    }
-  for (size_t i = 0; i <= max_deg; i++)
-    {
-      printf ("%d %d %d\n", i, S_k[i], I_k[i]);
     }
   /* put initial edge addition or deletion into table */
 
@@ -724,6 +709,16 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
 
       /* determine time of next event */
       time += gsl_ran_exponential (rng, 1 / rate_sum);
+      if (time > write_point)
+        { 
+          fprintf (of, "%g\t", write_point);
+          write_point += arguments.interval;
+          for (size_t z = 0; z <= max_deg; z++)
+            {
+             fprintf (of, "%g %d %d\t", p[z], S_k[z], I_k[z]);
+            }
+          fprintf (of, "\n");
+        }
 
       /* select one event to be next proportionally to it's rate */
 
@@ -823,8 +818,8 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
 	    added_edge_end_previous_degree = j_deg - 1;
 
 	    nodes[node_1]->connect_to (nodes[node_2]);
-	    fprintf (fp, "%g a %d %d\n", time, nodes[node_1]->get_id (),
-		     nodes[node_2]->get_id ());
+//	    fprintf (fp, "%g a %d %d\n", time, nodes[node_1]->get_id (),
+//		     nodes[node_2]->get_id ());
 
 	    free (i_deg_less_one_nodes);
 	    free (j_deg_less_one_nodes);
@@ -1059,8 +1054,8 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
 	    deleted_edge_end_id = edge->get_end ()->get_id ();
 	    deleted_edge_end_previous_degree = edge->get_end ()->deg ();
 
-	    fprintf (fp, "%g d %d %d\n", time,
-		     deleted_edge_start_id, deleted_edge_end_id);
+//	    fprintf (fp, "%g d %d %d\n", time,
+//		     deleted_edge_start_id, deleted_edge_end_id);
 	    edge->disconnect_nodes ();
 	    free (edge_ids);
 
@@ -1230,7 +1225,11 @@ printf ("trans_rate = %g\nrecov_rate = %g\nOUTPUT_FILE = %s\n"
   free (p);
   free (pf);
   gsl_rng_free (rng);
-  fclose (fp);
+//  fclose (fp);
+  if (of != stdout)
+{
+  fclose (of);
+}
 
   free (node_states);
   free (S_k);
