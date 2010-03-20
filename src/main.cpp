@@ -48,6 +48,13 @@ static struct argp_option options[] = {
   {"silent", 's', 0, OPTION_ALIAS},
   {"output", 'o', "FILE", 0,
    "Output to FILE instead of standard output"},
+  {0, 0, 0, 0, "Network Model Options"},
+  {"network_rate", 'n', "RATE", 0, 
+    "Network degree distribution approaches equilibirium "
+      "at rate RATE (default 0.4)"},
+  {"network_tension", 'k', "RATE", 0, 
+    "Network degree correlations are removed in proportion to "
+    "thier size at rate RATE (default 50)"},
   {0, 0, 0, 0, "Disease Model Options"},
   {"trans_rate", 't', "RATE", 0,
    "Disease moves at rate RATE (default 2) across an edge"},
@@ -77,6 +84,8 @@ struct arguments
   double interval;		/* LENGTH arg to `--interval' */
   double epsilon;		/* FRACTION arg to `--epsilon' */
   double finish_time;		/* LENGTH arg to `--finish_time' */
+  double network_rate;          /* RATE arg to `--network_rate' */
+  double network_tension;       /* RATE arg to `--network_tension' */
 };
 
 /* Parse a single option. */
@@ -146,6 +155,26 @@ parse_opt (int key, char *arg, struct argp_state *state)
 	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
 			 "finish_time=%g, should be in [0, 100]",
 			 arguments->finish_time);
+
+	}
+      break;
+    case 'n':
+      arguments->network_rate = strtod (arg, NULL);
+      if (arguments->network_rate < 0 || arguments->network_rate > MAX_RATE)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "network_rate=%g, should be in [0, %g]",
+			 arguments->network_rate, MAX_RATE);
+
+	}
+      break;
+    case 'k':
+      arguments->network_tension = strtod (arg, NULL);
+      if (arguments->network_tension < 0 || arguments->network_tension > MAX_RATE)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "network_tension=%g, should be in [0, %g]",
+			 arguments->network_tension, MAX_RATE);
 
 	}
       break;
@@ -366,6 +395,11 @@ main (int argc, char *argv[])
   arguments.interval = 0.05;
   arguments.epsilon = 0.1;
   arguments.finish_time = 5;
+  arguments.network_rate = 0.4;
+  arguments.network_tension = 50;
+
+  /*TODO add option to use high tension to eliminate degree correlations
+   * in initial network before beginning simulation */
 
   struct event *ev, *ev1, ev2;
   unsigned z;
@@ -395,13 +429,16 @@ main (int argc, char *argv[])
   argp_parse (&argp, argc, argv, 0, 0, &arguments);
 
   fprintf (stdout, "trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
-	   "epsilon = %g\nfinish_time = %g\nOUTPUT_FILE = %s\n"
+	   "epsilon = %g\nfinish_time = %g\nnetwork_rate = %g\n"
+           "network_tension = %g\nOUTPUT_FILE = %s\n"
 	   "VERBOSE = %s\nSILENT = %s\n",
 	   arguments.trans_rate,
 	   arguments.recov_rate,
 	   arguments.interval,
 	   arguments.epsilon,
 	   arguments.finish_time,
+           arguments.network_rate,
+           arguments.network_tension,
 	   arguments.output_file,
 	   arguments.verbose ? "yes" : "no", arguments.silent ? "yes" : "no");
 #ifdef    DYNET_DEBUG
@@ -524,7 +561,7 @@ main (int argc, char *argv[])
   fprintf (of, "\n");
 
   /* rate of approach of degree dist to pf */
-  double v = 4e-1;
+  double v = arguments.network_rate;
 
   /* deletion rate of all edge types */
   /* if set to zero, only delete edge as needed to satsify net rates */
@@ -541,7 +578,7 @@ main (int argc, char *argv[])
   /* this adjusts how the matrix of edge types is 
    * pushed toward being that of a perfectly uncorrelated 
    * network */
-  double tension = 50;
+  double tension = arguments.network_tension;
 
   const gsl_rng_type *T;
   gsl_rng *rng;
