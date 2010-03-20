@@ -55,6 +55,8 @@ static struct argp_option options[] = {
   {"network_tension", 'k', "RATE", 0, 
     "Network degree correlations are removed in proportion to "
     "thier size at rate RATE (default 50)"},
+  {"network_size", 'N', "COUNT", 0, 
+    "the network is made to have about COUNT (default 10000) nodes "},
   {0, 0, 0, 0, "Disease Model Options"},
   {"trans_rate", 't', "RATE", 0,
    "Disease moves at rate RATE (default 2) across an edge"},
@@ -86,6 +88,7 @@ struct arguments
   double finish_time;		/* LENGTH arg to `--finish_time' */
   double network_rate;          /* RATE arg to `--network_rate' */
   double network_tension;       /* RATE arg to `--network_tension' */
+  int network_size;             /* COUNT arg to `--network_size' */
 };
 
 /* Parse a single option. */
@@ -175,6 +178,16 @@ parse_opt (int key, char *arg, struct argp_state *state)
 	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
 			 "network_tension=%g, should be in [0, %g]",
 			 arguments->network_tension, MAX_RATE);
+
+	}
+      break;
+    case 'N':
+      arguments->network_size = atoi (arg);
+      if (arguments->network_size < 1 || arguments->network_size > 1e6)
+	{
+	  error_at_line (EXIT_FAILURE, 0, __FILE__, __LINE__,
+			 "network_size=%d, should be in [1, %d]",
+			 arguments->network_size, (int) 1e6);
 
 	}
       break;
@@ -279,6 +292,7 @@ void print_rates (struct event *event_table);
 int check_event_by_key (char event_code, int ego_id, int alter_id);
 int check_infector_events (int infector_id);
 double get_rate_sum ();
+int neighbor_state_count (int susceptible_id, int *num_S_nb, int *num_I_nb);
 
 /** functions **/
 
@@ -377,12 +391,13 @@ main (int argc, char *argv[])
    * hosts from infected hosts */
   double epsilon = 1e-1;
 
-  /* I_k_initial holds the number of initially infected hosts in 
-   * degree class k, based on epsilon */
-  int I_k_initial;
+  /* I_initial holds the number of initially infected hosts in 
+   * based on epsilon */
+  int I_initial;
 
   /* array holding IDS of initially infected hosts */
-  int *I_k_initial_IDs;
+  int *I_initial_IDs;
+  int *all_nodes_IDs;
 
   struct arguments arguments;
 
@@ -397,6 +412,7 @@ main (int argc, char *argv[])
   arguments.finish_time = 5;
   arguments.network_rate = 0.4;
   arguments.network_tension = 50;
+  arguments.network_size = 10000;
 
   /*TODO add option to use high tension to eliminate degree correlations
    * in initial network before beginning simulation */
@@ -430,7 +446,7 @@ main (int argc, char *argv[])
 
   fprintf (stdout, "trans_rate = %g\nrecov_rate = %g\ninterval = %g\n"
 	   "epsilon = %g\nfinish_time = %g\nnetwork_rate = %g\n"
-           "network_tension = %g\nOUTPUT_FILE = %s\n"
+           "network_tension = %g\nnetwork_size= %d\nOUTPUT_FILE = %s\n"
 	   "VERBOSE = %s\nSILENT = %s\n",
 	   arguments.trans_rate,
 	   arguments.recov_rate,
@@ -439,6 +455,7 @@ main (int argc, char *argv[])
 	   arguments.finish_time,
            arguments.network_rate,
            arguments.network_tension,
+           arguments.network_size,
 	   arguments.output_file,
 	   arguments.verbose ? "yes" : "no", arguments.silent ? "yes" : "no");
 #ifdef    DYNET_DEBUG
@@ -456,7 +473,7 @@ main (int argc, char *argv[])
 
   // Create and populate a network
 //  Network net ("name", false);
-  int N = 8000;			// network size
+  int N = arguments.network_size * 0.8;			
   net.populate (N);
 
   // Parameterize degree distribution, a truncated Poisson(5)
@@ -558,7 +575,7 @@ main (int argc, char *argv[])
     {
       fprintf (of, "p_%u S_%u I_%u\t", z, z, z);
     }
-  fprintf (of, "\n");
+  fprintf (of, "r_edge p_I p_S\n");
 
   /* rate of approach of degree dist to pf */
   double v = arguments.network_rate;
@@ -599,6 +616,9 @@ main (int argc, char *argv[])
   /* calc_r is non-zero if assortativity calculation should be done */
   int calc_r = 1;
 
+  /* r_edge stores the degree correlation (assortativity) */
+  double r_edge = -99;
+
   /* put intial infection and recovery event into table */
 
   node_states = (char *) malloc ((num_nodes + 1) * sizeof (char));
@@ -631,52 +651,30 @@ main (int argc, char *argv[])
       return (1);
     }
 
-  for (size_t i = 0; i <= max_deg; i++)
-    {
-      I_k_initial = round ((1 - pow (1 - epsilon, i)) * tmp_dist[i]);
-      count1 = 0;
-      tmp_dist = net.get_deg_dist ();
-      i_deg_nodes = (int *) malloc (tmp_dist[i] * sizeof (int));
-      if (!i_deg_nodes)
+   I_initial = round (epsilon * arguments.network_size);
+   I_initial_IDs = (int *) malloc (I_initial * sizeof (int));
+   all_nodes_IDs = (int *) malloc (arguments.network_size 
+                                        * sizeof (int));
+   if (!I_initial_IDs || !all_nodes_IDs)
 	{
 	  fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
 		   __FILE__, __LINE__);
 	  return (1);
 	}
-      I_k_initial_IDs = (int *) malloc (I_k_initial * sizeof (int));
-      if (!I_k_initial_IDs)
-	{
-	  fprintf (stderr, "Error: %s: %d: Malloc of array failed\n",
-		   __FILE__, __LINE__);
-	  return (1);
-	}
+   for (size_t j = 0; j < arguments.network_size; j++)
+     {
+       all_nodes_IDs[j] = j;
+     }
+   gsl_ran_choose (rng, I_initial_IDs, I_initial, all_nodes_IDs, 
+                   arguments.network_size, sizeof (int));
+   for (size_t j = 0; j < I_initial; j++)
+     {
+       infect (OUTSIDE, I_initial_IDs[j]);
+     }
+   free (I_initial_IDs);
+   free (all_nodes_IDs);
+    
 
-
-      vector < Node * >nodes = net.get_nodes ();
-      for (int j = 0; j < nodes.size (); j++)
-	{
-	  if (i == nodes[j]->deg ())
-	    {
-	      i_deg_nodes[count1] = j;
-	      count1++;
-	    }
-	}
-      if (count1 != tmp_dist[i])
-	{
-	  fprintf (stderr,
-		   "Error: %s: %d: p is incorrect, arrays are wrong size:\n",
-		   __FILE__, __LINE__);
-	  return (1);
-	}
-      gsl_ran_choose (rng, I_k_initial_IDs, I_k_initial, i_deg_nodes, count1,
-		      sizeof (int));
-      for (size_t j = 0; j < I_k_initial; j++)
-	{
-	  infect (OUTSIDE, I_k_initial_IDs[j]);
-	}
-      free (I_k_initial_IDs);
-      free (i_deg_nodes);
-    }
   /* put initial edge addition or deletion into table */
 
   /* tally number of arcs of each type */
@@ -698,7 +696,6 @@ main (int argc, char *argv[])
     {
       /* see Newman 2002 amn eq. (4) */
       double M_recip = (double) 1 / edges.size ();
-      double r_edge;
       double n1, nd2, d1;
       n1 = nd2 = d1 = 0;
       for (int i = 0; i < edges.size (); i++)
@@ -775,8 +772,8 @@ main (int argc, char *argv[])
   double time = 0;
   int step_count = 0;
   double rand;
-  double cum_density;
-  while (time < arguments.finish_time)
+  double cum_density, p_I, p_S;
+  while (time < arguments.finish_time && rate_sum > 0)
     {
       step_count++;
 
@@ -868,6 +865,26 @@ main (int argc, char *argv[])
 	}
       free (I_k_check);
       free (S_k_check);
+      
+      /* calculate p.I, i.e. fraction of arcs from susctpibles
+       * going to infecteds */
+      nodes = net.get_nodes ();
+      int num_S_nb, num_I_nb, sum_S_nb, sum_I_nb, sum_nb, susceptible_id;
+      sum_nb = sum_S_nb = sum_I_nb = 0;
+      for (size_t z = 0; z < nodes.size (); z++)
+	{
+	  if (node_states[z] == 's')
+	    {
+              num_S_nb = num_I_nb = 0;
+              sum_nb += nodes[z]->deg();
+	      susceptible_id = nodes[z]->get_id ();
+	      neighbor_state_count (susceptible_id, &num_S_nb, &num_I_nb);
+              sum_S_nb += num_S_nb;
+              sum_I_nb += num_I_nb;
+	    }
+	}
+      p_S = (double) sum_S_nb / sum_nb;
+      p_I = (double)sum_I_nb / sum_nb;
 #endif
 #if DYNET_DEBUG > 1
 
@@ -897,11 +914,11 @@ main (int argc, char *argv[])
 	    }
 	}
 
-      for (int i = 0; i < nodes.size (); i++)
+      for (size_t z = 0; z < nodes.size (); z++)
 	{
-	  if (node_states[i] == 'i')
+	  if (node_states[z] == 'i')
 	    {
-	      infector_id = nodes[i]->get_id ();
+	      infector_id = nodes[z]->get_id ();
 	      event_count += check_infector_events (infector_id);
 	    }
 	}
@@ -976,6 +993,7 @@ main (int argc, char *argv[])
 	}
 #endif
 
+
       if (step_count > STEPMAX)
 	{
 	  fprintf (stderr, "Warning: %s: %d: reached STEPMAX, breaking\n",
@@ -993,7 +1011,7 @@ main (int argc, char *argv[])
 	    {
 	      fprintf (of, "%g %d %d\t", p[z], S_k[z], I_k[z]);
 	    }
-	  fprintf (of, "\n");
+	  fprintf (of, "%g %g %g\n", r_edge, p_I, p_S);
 	}
 
       /* select one event to be next proportionally to it's rate */
@@ -1057,7 +1075,7 @@ main (int argc, char *argv[])
 	      }
 
 	    vector < Node * >nodes = net.get_nodes ();
-	    for (int i = 0; i < nodes.size (); i++)
+            for (size_t i =0; i<nodes.size(); i++)
 	      {
 		if (i_deg - 1 == nodes[i]->deg ())
 		  {
@@ -1122,7 +1140,6 @@ main (int argc, char *argv[])
 	      {
 		/* see Newman 2002 amn eq. (4) */
 		double M_recip = (double) 1 / edges.size ();
-		double r_edge;
 		double n1, nd2, d1;
 		n1 = nd2 = d1 = 0;
 		for (int i = 0; i < edges.size (); i++)
@@ -1384,7 +1401,6 @@ main (int argc, char *argv[])
 	      {
 		/* see Newman 2002 amn eq. (4) */
 		double M_recip = (double) 1 / edges.size ();
-		double r_edge;
 		double n1, nd2, d1;
 		n1 = nd2 = d1 = 0;
 		for (int i = 0; i < edges.size (); i++)
@@ -2060,6 +2076,39 @@ infect (int infector_id, int infectee_id)
 	}
     }
   return 0;
+}
+
+int
+neighbor_state_count (int susceptible_id, int *num_S_nb, int *num_I_nb)
+{
+
+  int neighbor_id;
+  /* check for event of infector infecting neighbors */
+
+  vector < Node * >nodes = net.get_nodes ();
+  vector < Node * >neighbors = nodes[susceptible_id]->get_neighbors ();
+  for (int i = 0; i < neighbors.size (); i++)
+    {
+      neighbor_id = neighbors[i]->get_id ();
+      switch (node_states[neighbor_id])
+	{
+	case 's':
+          ++*num_S_nb;
+	  break;
+	case 'i':
+          ++*num_I_nb;
+	  break;
+	case 'r':
+	  break;
+	default:
+	  fprintf (stderr,
+		   "Error: %s: %d: invalid state for node\n",
+		   __FILE__, __LINE__);
+	  exit (1);
+	}
+    }
+  return 0;
+
 }
 
 int

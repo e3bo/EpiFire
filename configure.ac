@@ -1,6 +1,6 @@
 # Prelude.
 AC_INIT([dynet], [0.2], [ebo@mail.utexas.edu])
-AM_INIT_AUTOMAKE([foreign])
+AM_INIT_AUTOMAKE([-Wall foreign])
 AC_CONFIG_SRCDIR([src/main.cpp])
 #Check for programs.
 AC_PROG_CXX
